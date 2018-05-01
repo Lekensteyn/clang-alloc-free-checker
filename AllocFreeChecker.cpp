@@ -103,6 +103,8 @@ AllocFreeChecker::AllocFreeChecker() {
   DoubleFreeBugType.reset(
       new BugType(this, "Double free", categories::MemoryError));
   LeakBugType.reset(new BugType(this, "Memory leak", categories::MemoryError));
+  // Sinks are higher importance bugs as well as calls to assert() or exit(0).
+  LeakBugType->setSuppressOnSink(true);
 }
 
 AllocationFamily getWmemFamily(const CallEvent &Call, CheckerContext &C) {
@@ -279,7 +281,9 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
     if (IsSymDead)
       State = State->remove<AddressMap>(Sym);
   }
-  ExplodedNode *N = C.addTransition(State);
+  ExplodedNode *N = C.generateNonFatalErrorNode(State);
+  if (!N)
+    return;
   reportLeaks(LeakedAddresses, C, N);
 }
 
