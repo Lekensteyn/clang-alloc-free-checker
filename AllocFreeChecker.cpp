@@ -86,9 +86,13 @@ AllocFreeChecker::AllocFreeChecker() {
 AllocationFamily getAllocFamily(const CallEvent &Call) {
   if (Call.isGlobalCFunction("g_malloc") ||
       Call.isGlobalCFunction("g_malloc0") ||
+      Call.isGlobalCFunction("g_memdup") ||
+      Call.isGlobalCFunction("g_strdup") ||
+      Call.isGlobalCFunction("g_strndup") ||
       Call.isGlobalCFunction("g_realloc")) {
     return AF_Glib;
-  } else if (Call.isGlobalCFunction("g_strsplit")) {
+  } else if (Call.isGlobalCFunction("g_strsplit") ||
+      Call.isGlobalCFunction("g_strdupv")) {
     return AF_GlibStringVector;
   }
   return AF_None;

@@ -27,7 +27,29 @@ void checkFreeMismatch() {
   g_free(p); // expected-warning {{Memory is expected to be deallocated by g_strfreev}}
 }
 
+void checkFreeMismatch2() {
+  char **p = g_strsplit("", "", -1);
+  char **p2 = g_strdupv(p);
+  g_strfreev(p);
+  g_free(p2); // expected-warning {{Memory is expected to be deallocated by g_strfreev}}
+}
+
 void checkListFreeMismatch() {
   char **p = (char **)g_malloc(42);
+  g_strfreev(p); // expected-warning {{Memory is expected to be deallocated by g_free}}
+}
+
+void checkListFreeMismatch2() {
+  char **p = (char **)g_strdup("");
+  g_strfreev(p); // expected-warning {{Memory is expected to be deallocated by g_free}}
+}
+
+void checkListFreeMismatch3() {
+  char **p = (char **)g_memdup("", 1);
+  g_strfreev(p); // expected-warning {{Memory is expected to be deallocated by g_free}}
+}
+
+void checkListFreeMismatch4() {
+  char **p = (char **)g_strndup("", 1);
   g_strfreev(p); // expected-warning {{Memory is expected to be deallocated by g_free}}
 }
