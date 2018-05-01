@@ -112,7 +112,8 @@ AllocationFamily getWmemFamily(const CallEvent &Call, CheckerContext &C) {
   if (!ArgE)
     return AF_None;
 
-  if (ArgE->isNullPointerConstant(C.getASTContext(), Expr::NPC_ValueDependentIsNotNull))
+  if (ArgE->isNullPointerConstant(C.getASTContext(),
+                                  Expr::NPC_ValueDependentIsNotNull))
     return AF_WmemNullScope;
 
   if (const CallExpr *CE = dyn_cast<CallExpr>(ArgE)) {
