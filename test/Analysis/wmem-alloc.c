@@ -30,13 +30,10 @@ void checkAlloc0Memleak() {
   char *p = (char *)wmem_alloc0(NULL, 42);
 } // expected-warning {{Memory leak}}
 
-// TODO fix realloc handling
-#if 0
-void checkMemleak3() {
+void checkReallocMemleak() {
   char *p = (char *)wmem_alloc0(NULL, 42);
   char *p2 = (char *)wmem_realloc(NULL, p, 43);
-} // expected- warning {{Memory leak}}
-#endif
+} // expected-warning {{Memory leak}}
 
 void checkStrdupMemLeak() {
   gchar *p = wmem_strdup(NULL, "");

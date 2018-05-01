@@ -123,6 +123,7 @@ AllocationFamily getAllocFamily(const CallEvent &Call) {
     return AF_GlibStringVector;
   } else if (Call.isGlobalCFunction("wmem_alloc") ||
              Call.isGlobalCFunction("wmem_alloc0") ||
+             Call.isGlobalCFunction("wmem_realloc") ||
              Call.isGlobalCFunction("wmem_strdup") ||
              Call.isGlobalCFunction("wmem_strndup") ||
              Call.isGlobalCFunction("wmem_strdup_printf") ||
@@ -142,7 +143,8 @@ AllocationFamily getDeallocFamily(const CallEvent &Call) {
     return AF_Glib;
   } else if (Call.isGlobalCFunction("g_strfreev")) {
     return AF_GlibStringVector;
-  } else if (Call.isGlobalCFunction("wmem_free")) {
+  } else if (Call.isGlobalCFunction("wmem_free") ||
+             Call.isGlobalCFunction("wmem_realloc")) {
     return getWmemFamily(Call);
   }
   return AF_None;
@@ -203,8 +205,7 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
   AllocationFamily family = getDeallocFamily(Call);
   if (family != AF_None) {
     unsigned pointerParam = isWmemAllocationFamily(family) ? 1 : 0;
-    // TODO realloc has an additional parameter
-    if (Call.getNumArgs() != pointerParam + 1)
+    if (Call.getNumArgs() < pointerParam + 1)
       return;
 
     SymbolRef Address = Call.getArgSVal(pointerParam).getAsSymbol();

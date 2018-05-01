@@ -22,8 +22,6 @@ void checkMemleak() {
   char *p = (char *)g_malloc0(42);
 } // expected-warning {{Memory leak}}
 
-// TODO fix g_realloc to handle transfer of memory
-#if 0
 void checkRealloc() {
   char *p = (char *)g_malloc0(42);
   char *p2 = (char *)g_realloc(p, 43);
@@ -33,10 +31,9 @@ void checkRealloc() {
 void checkReallocBadFree() {
   char *p = (char *)g_malloc0(42);
   char *p2 = (char *)g_realloc(p, 43);
-  g_free(p); // expected- warning {{memory was freed before}}
+  g_free(p); // expected-warning {{memory was freed before}}
   g_free(p2);
 }
-#endif
 
 void checkReallocMemleak() {
   char *p = (char *)g_realloc(NULL, 43);
