@@ -1,5 +1,7 @@
 #pragma clang system_header
 
+#define NULL ((void *)0)
+
 typedef void *gpointer;
 typedef const void *gconstpointer;
 typedef unsigned long gsize;

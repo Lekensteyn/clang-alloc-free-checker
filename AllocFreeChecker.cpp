@@ -99,7 +99,8 @@ AllocationFamily getAllocFamily(const CallEvent &Call) {
 }
 
 AllocationFamily getDeallocFamily(const CallEvent &Call) {
-  if (Call.isGlobalCFunction("g_free")) {
+  if (Call.isGlobalCFunction("g_free") ||
+      Call.isGlobalCFunction("g_realloc")) {
     return AF_Glib;
   } else if (Call.isGlobalCFunction("g_strfreev")) {
     return AF_GlibStringVector;
@@ -200,7 +201,7 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
 void AllocFreeChecker::reportAllocDeallocMismatch(
     SymbolRef AddressSym, const CallEvent &Call, CheckerContext &C,
     AllocationFamily family) const {
-  // We reached a bug, stop exploring the path here by generaring a sink.
+  // We reached a bug, stop exploring the path here by generating a sink.
   ExplodedNode *ErrNode = C.generateErrorNode();
 
   // If we have already reached this node on another path, return.
