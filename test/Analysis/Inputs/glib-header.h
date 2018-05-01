@@ -5,6 +5,7 @@
 typedef void *gpointer;
 typedef const void *gconstpointer;
 typedef unsigned long gsize;
+typedef signed long gssize;
 typedef char gchar;
 typedef int gint;
 typedef unsigned int guint;

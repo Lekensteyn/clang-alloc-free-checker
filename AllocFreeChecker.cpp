@@ -11,7 +11,22 @@ namespace {
 typedef SmallVector<SymbolRef, 2> SymbolVector;
 
 // Groups allocation and deallocation functions.
-enum AllocationFamily : unsigned { AF_None, AF_Glib, AF_GlibStringVector };
+enum AllocationFamily : unsigned {
+  AF_None,
+  AF_Glib,
+  AF_GlibStringVector,
+  AF_WmemNullScope,
+  AF_WmemEpanScope,
+  AF_WmemFileScope,
+  AF_WmemPacketScope,
+  AF_WmemOther
+};
+
+bool isWmemAllocationFamily(AllocationFamily family) {
+  return family == AF_WmemNullScope || family == AF_WmemEpanScope ||
+         family == AF_WmemFileScope || family == AF_WmemPacketScope ||
+         family == AF_WmemOther;
+}
 
 class AllocState {
   enum Kind : unsigned { Allocated, Freed };
@@ -28,6 +43,13 @@ public:
   bool isFamily(AllocationFamily family) const { return Family == family; }
   AllocationFamily getAllocationFamily() const {
     return (AllocationFamily)Family;
+  }
+
+  /// Returns true if this is scoped wmem-allocated memory that is automatically
+  /// freed when the scope is left.
+  bool isManagedDeallocation() const {
+    return isWmemAllocationFamily((AllocationFamily)Family) &&
+           Family != AF_WmemNullScope;
   }
 
   static AllocState getAllocated(AllocationFamily family) {
@@ -83,6 +105,11 @@ AllocFreeChecker::AllocFreeChecker() {
   LeakBugType.reset(new BugType(this, "Memory leak", categories::MemoryError));
 }
 
+AllocationFamily getWmemFamily(const CallEvent &Call) {
+  // TODO actually match the expected scope
+  return AF_WmemNullScope;
+}
+
 AllocationFamily getAllocFamily(const CallEvent &Call) {
   if (Call.isGlobalCFunction("g_malloc") ||
       Call.isGlobalCFunction("g_malloc0") ||
@@ -92,18 +119,31 @@ AllocationFamily getAllocFamily(const CallEvent &Call) {
       Call.isGlobalCFunction("g_realloc")) {
     return AF_Glib;
   } else if (Call.isGlobalCFunction("g_strsplit") ||
-      Call.isGlobalCFunction("g_strdupv")) {
+             Call.isGlobalCFunction("g_strdupv")) {
     return AF_GlibStringVector;
+  } else if (Call.isGlobalCFunction("wmem_alloc") ||
+             Call.isGlobalCFunction("wmem_alloc0") ||
+             Call.isGlobalCFunction("wmem_strdup") ||
+             Call.isGlobalCFunction("wmem_strndup") ||
+             Call.isGlobalCFunction("wmem_strdup_printf") ||
+             Call.isGlobalCFunction("wmem_strdup_vprintf") ||
+             Call.isGlobalCFunction("wmem_strconcat") ||
+             Call.isGlobalCFunction("wmem_strjoin") ||
+             Call.isGlobalCFunction("wmem_strjoinv") ||
+             Call.isGlobalCFunction("wmem_strsplit") ||
+             Call.isGlobalCFunction("wmem_ascii_strdown")) {
+    return getWmemFamily(Call);
   }
   return AF_None;
 }
 
 AllocationFamily getDeallocFamily(const CallEvent &Call) {
-  if (Call.isGlobalCFunction("g_free") ||
-      Call.isGlobalCFunction("g_realloc")) {
+  if (Call.isGlobalCFunction("g_free") || Call.isGlobalCFunction("g_realloc")) {
     return AF_Glib;
   } else if (Call.isGlobalCFunction("g_strfreev")) {
     return AF_GlibStringVector;
+  } else if (Call.isGlobalCFunction("wmem_free")) {
+    return getWmemFamily(Call);
   }
   return AF_None;
 }
@@ -115,6 +155,21 @@ void printExpectedDeallocName(raw_ostream &os, AllocationFamily family) {
     break;
   case AF_GlibStringVector:
     os << "g_strfreev";
+    break;
+  case AF_WmemNullScope:
+    os << "wmem_free(NULL, ...)";
+    break;
+  case AF_WmemEpanScope:
+    os << "wmem_free(wmem_epan_scope(), ...)";
+    break;
+  case AF_WmemFileScope:
+    os << "wmem_free(wmem_file_scope(), ...)";
+    break;
+  case AF_WmemPacketScope:
+    os << "wmem_free(wmem_packet_scope(), ...)";
+    break;
+  case AF_WmemOther:
+    os << "wmem_free";
     break;
   case AF_None:
     llvm_unreachable("suspicious argument");
@@ -142,12 +197,17 @@ void AllocFreeChecker::checkPostCall(const CallEvent &Call,
 
 void AllocFreeChecker::checkPreCall(const CallEvent &Call,
                                     CheckerContext &C) const {
-  if (!Call.isGlobalCFunction() || Call.getNumArgs() != 1)
+  if (!Call.isGlobalCFunction())
     return;
 
   AllocationFamily family = getDeallocFamily(Call);
   if (family != AF_None) {
-    SymbolRef Address = Call.getArgSVal(0).getAsSymbol();
+    unsigned pointerParam = isWmemAllocationFamily(family) ? 1 : 0;
+    // TODO realloc has an additional parameter
+    if (Call.getNumArgs() != pointerParam + 1)
+      return;
+
+    SymbolRef Address = Call.getArgSVal(pointerParam).getAsSymbol();
     if (!Address)
       return;
 
@@ -171,7 +231,7 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
 }
 
 static bool isLeaked(SymbolRef Sym, const AllocState &SS, bool IsSymDead) {
-  if (IsSymDead && SS.isAllocated()) {
+  if (IsSymDead && (SS.isAllocated() && !SS.isManagedDeallocation())) {
     return true;
   }
   return false;

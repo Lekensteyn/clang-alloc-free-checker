@@ -19,14 +19,18 @@ if(LLVM_ENABLE_PLUGINS AND (WIN32 OR CYGWIN))
     )
 endif()
 
-add_custom_target(check-AllocFreePlugin
+add_custom_target(check-AllocFreePlugin)
+foreach(_test alloc-free-checker wmem-alloc)
+  add_custom_target(check-${_test}
     COMMAND
         clang -cc1 -analyze
         -load $<TARGET_FILE:AllocFreePlugin>
         -analyzer-checker=core,alpha.AllocFree
-        -verify ${CMAKE_CURRENT_SOURCE_DIR}/test/Analysis/alloc-free-checker.c
+        -verify ${CMAKE_CURRENT_SOURCE_DIR}/test/Analysis/${_test}.c
     DEPENDS AllocFreePlugin
     )
+  add_dependencies(check-AllocFreePlugin check-${_test})
+endforeach()
 add_custom_target(check DEPENDS check-AllocFreePlugin)
 
 # Somehow does not work...
