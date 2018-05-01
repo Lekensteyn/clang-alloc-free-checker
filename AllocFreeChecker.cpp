@@ -105,12 +105,36 @@ AllocFreeChecker::AllocFreeChecker() {
   LeakBugType.reset(new BugType(this, "Memory leak", categories::MemoryError));
 }
 
-AllocationFamily getWmemFamily(const CallEvent &Call) {
-  // TODO actually match the expected scope
-  return AF_WmemNullScope;
+AllocationFamily getWmemFamily(const CallEvent &Call, CheckerContext &C) {
+  const Expr *ArgE = Call.getArgExpr(0);
+  if (!ArgE)
+    return AF_None;
+
+  if (ArgE->isNullPointerConstant(C.getASTContext(), Expr::NPC_ValueDependentIsNotNull))
+    return AF_WmemNullScope;
+
+  if (const CallExpr *CE = dyn_cast<CallExpr>(ArgE)) {
+    if (const FunctionDecl *FD = CE->getDirectCallee()) {
+      StringRef DeallocatorName = FD->getName();
+      if (DeallocatorName == "wmem_epan_scope") {
+        return AF_WmemEpanScope;
+      }
+      if (DeallocatorName == "wmem_file_scope") {
+        return AF_WmemFileScope;
+      }
+      if (DeallocatorName == "wmem_packet_scope") {
+        return AF_WmemPacketScope;
+      }
+    }
+    // Unknown scope
+    return AF_WmemOther;
+  }
+
+  // Unknown type (perhaps pinfo->scope?)
+  return AF_WmemOther;
 }
 
-AllocationFamily getAllocFamily(const CallEvent &Call) {
+AllocationFamily getAllocFamily(const CallEvent &Call, CheckerContext &C) {
   if (Call.isGlobalCFunction("g_malloc") ||
       Call.isGlobalCFunction("g_malloc0") ||
       Call.isGlobalCFunction("g_memdup") ||
@@ -133,19 +157,19 @@ AllocationFamily getAllocFamily(const CallEvent &Call) {
              Call.isGlobalCFunction("wmem_strjoinv") ||
              Call.isGlobalCFunction("wmem_strsplit") ||
              Call.isGlobalCFunction("wmem_ascii_strdown")) {
-    return getWmemFamily(Call);
+    return getWmemFamily(Call, C);
   }
   return AF_None;
 }
 
-AllocationFamily getDeallocFamily(const CallEvent &Call) {
+AllocationFamily getDeallocFamily(const CallEvent &Call, CheckerContext &C) {
   if (Call.isGlobalCFunction("g_free") || Call.isGlobalCFunction("g_realloc")) {
     return AF_Glib;
   } else if (Call.isGlobalCFunction("g_strfreev")) {
     return AF_GlibStringVector;
   } else if (Call.isGlobalCFunction("wmem_free") ||
              Call.isGlobalCFunction("wmem_realloc")) {
-    return getWmemFamily(Call);
+    return getWmemFamily(Call, C);
   }
   return AF_None;
 }
@@ -181,10 +205,10 @@ void printExpectedDeallocName(raw_ostream &os, AllocationFamily family) {
 /// Process alloc
 void AllocFreeChecker::checkPostCall(const CallEvent &Call,
                                      CheckerContext &C) const {
-  if (!Call.isGlobalCFunction())
+  if (!Call.isGlobalCFunction() || Call.getNumArgs() == 0)
     return;
 
-  AllocationFamily family = getAllocFamily(Call);
+  AllocationFamily family = getAllocFamily(Call, C);
   if (family != AF_None) {
     SymbolRef Address = Call.getReturnValue().getAsSymbol();
     if (!Address)
@@ -199,10 +223,10 @@ void AllocFreeChecker::checkPostCall(const CallEvent &Call,
 
 void AllocFreeChecker::checkPreCall(const CallEvent &Call,
                                     CheckerContext &C) const {
-  if (!Call.isGlobalCFunction())
+  if (!Call.isGlobalCFunction() || Call.getNumArgs() == 0)
     return;
 
-  AllocationFamily family = getDeallocFamily(Call);
+  AllocationFamily family = getDeallocFamily(Call, C);
   if (family != AF_None) {
     unsigned pointerParam = isWmemAllocationFamily(family) ? 1 : 0;
     if (Call.getNumArgs() < pointerParam + 1)
