@@ -8,13 +8,11 @@ void checkNormalFree() {
   wmem_free(NULL, p);
 }
 
-#if 0
 void checkNormalListFree() {
   char **p = wmem_strsplit(NULL, "", "", -1);
   // TODO API design issue: there is no good way to delete elements.
   wmem_free(NULL, p);
 }
-#endif
 
 void checkDoubleFree() {
   char *p = (char *)wmem_alloc(NULL, 42);
@@ -62,6 +60,10 @@ void checkStrjoinMemLeak() {
 void checkStrjoinvMemLeak() {
   gchar *array[] = { "x", "y", NULL };
   gchar *p = wmem_strjoinv(NULL, ",", array);
+} // expected-warning {{Memory leak}}
+
+void checkStrsplitMemLeak() {
+  gchar **p = wmem_strsplit(NULL, "X", ",", -1);
 } // expected-warning {{Memory leak}}
 
 void checkAscii_strdownMemLeak() {
