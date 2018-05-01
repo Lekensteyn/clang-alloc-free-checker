@@ -47,3 +47,13 @@ void checkUnknownScopeMatch(wmem_allocator_t *scope) {
   char *p = (char *)wmem_alloc(scope, 42);
   wmem_free(scope, p);
 }
+
+void checkUnknownScopeMismatch(wmem_allocator_t *scope) {
+  char *p = (char *)wmem_alloc(scope, 42);
+  wmem_free(NULL, p); // expected-warning {{Memory is expected to be deallocated by wmem_free}}
+}
+
+void checkUnknownScopeMismatch2(wmem_allocator_t *scope) {
+  char *p = (char *)wmem_alloc(wmem_file_scope(), 42);
+  wmem_free(scope, p); // expected-warning {{Memory is expected to be deallocated by wmem_free(wmem_file_scope(), ...)}}
+}

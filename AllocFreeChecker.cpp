@@ -130,7 +130,7 @@ AllocationFamily getWmemFamily(const CallEvent &Call, CheckerContext &C) {
     return AF_WmemOther;
   }
 
-  // Unknown type (perhaps pinfo->scope?)
+  // Unknown type (perhaps pinfo->pool?)
   return AF_WmemOther;
 }
 
