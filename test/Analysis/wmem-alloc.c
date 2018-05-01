@@ -67,3 +67,13 @@ void checkStrjoinvMemLeak() {
 void checkAscii_strdownMemLeak() {
   gchar *p = wmem_ascii_strdown(NULL, "X", 1);
 } // expected-warning {{Memory leak}}
+
+void checkBadGFree() {
+  char *p = (char *)wmem_alloc(NULL, 42);
+  g_free(p); // expected-warning {{Memory is expected to be deallocated by wmem_free(NULL, ...)}}
+}
+
+void checkBadWmemFree() {
+  char *p = (char *)g_malloc(42);
+  wmem_free(NULL, p); // expected-warning {{Memory is expected to be deallocated by g_free}}
+}
