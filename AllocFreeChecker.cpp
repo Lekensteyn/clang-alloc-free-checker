@@ -66,7 +66,8 @@ public:
 };
 
 class AllocFreeChecker
-    : public Checker<check::PostCall, check::PreCall, check::DeadSymbols> {
+    : public Checker<check::PostCall, check::PreCall, check::DeadSymbols,
+                     check::PointerEscape> {
   std::unique_ptr<BugType> AllocDeallocMismatchBugType;
   std::unique_ptr<BugType> DoubleFreeBugType;
   std::unique_ptr<BugType> LeakBugType;
@@ -91,6 +92,11 @@ public:
   void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
 
   void checkDeadSymbols(SymbolReaper &SymReaper, CheckerContext &C) const;
+
+  ProgramStateRef checkPointerEscape(ProgramStateRef State,
+                                     const InvalidatedSymbols &Escaped,
+                                     const CallEvent *Call,
+                                     PointerEscapeKind Kind) const;
 };
 } // end anonymous namespace
 
@@ -338,6 +344,23 @@ void AllocFreeChecker::reportLeaks(ArrayRef<SymbolRef> LeakedAddresses,
     R->markInteresting(LeakedAddress);
     C.emitReport(std::move(R));
   }
+}
+
+// If the pointer we are tracking escaped, do not track the symbol as
+// we cannot reason about it anymore.
+ProgramStateRef AllocFreeChecker::checkPointerEscape(
+    ProgramStateRef State, const InvalidatedSymbols &Escaped,
+    const CallEvent *Call, PointerEscapeKind Kind) const {
+  for (InvalidatedSymbols::const_iterator I = Escaped.begin(),
+                                          E = Escaped.end();
+       I != E; ++I) {
+    SymbolRef Sym = *I;
+
+    // The symbol escaped. Optimistically, assume that the corresponding memory
+    // will be deallocated somewhere else.
+    State = State->remove<AddressMap>(Sym);
+  }
+  return State;
 }
 
 #if 0
