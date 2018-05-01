@@ -24,11 +24,10 @@ void checkMemleak() {
 
 void checkFreeMismatch() {
   char **p = g_strsplit("", "", -1);
-  g_free(p); // expected-warning {{list allocated, but freed as normal memory}}
+  g_free(p); // expected-warning {{Memory is expected to be deallocated by g_strfreev}}
 }
 
 void checkListFreeMismatch() {
   char **p = (char **)g_malloc(42);
-  g_strfreev(
-      p); // expected-warning {{normal memory allocated, but freed as list}}
+  g_strfreev(p); // expected-warning {{Memory is expected to be deallocated by g_free}}
 }

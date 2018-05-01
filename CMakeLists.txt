@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.4.3)
 
 project(AllocFreeChecker CXX)
+set(CMAKE_CXX_STANDARD 11)
 
 find_package(LLVM REQUIRED)
 set(CMAKE_MODULE_PATH ${LLVM_CMAKE_DIR})

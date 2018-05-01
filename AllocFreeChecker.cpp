@@ -10,22 +10,36 @@ using namespace ento;
 namespace {
 typedef SmallVector<SymbolRef, 2> SymbolVector;
 
+// Groups allocation and deallocation functions.
+enum AllocationFamily : unsigned { AF_None, AF_Glib, AF_GlibStringVector };
+
 class AllocState {
-  enum Kind { Allocated, Freed, ListAllocated, ListFreed } K;
-  AllocState(Kind InK) : K(InK) {}
+  enum Kind : unsigned { Allocated, Freed };
+  unsigned K : 1;
+  unsigned Family : 31;
+
+  AllocState(Kind InK, AllocationFamily family) : K(InK), Family(family) {
+    assert(family != AF_None);
+  }
 
 public:
   bool isAllocated() const { return K == Allocated; }
-  bool isListAllocated() const { return K == ListAllocated; }
   bool isFreed() const { return K == Freed; }
-  bool isListFreed() const { return K == ListFreed; }
+  bool isFamily(AllocationFamily family) const { return Family == family; }
+  AllocationFamily getAllocationFamily() const {
+    return (AllocationFamily)Family;
+  }
 
-  static AllocState getAllocated() { return AllocState(Allocated); }
-  static AllocState getFreed() { return AllocState(Freed); }
-  static AllocState getListAllocated() { return AllocState(ListAllocated); }
-  static AllocState getListFreed() { return AllocState(ListFreed); }
+  static AllocState getAllocated(AllocationFamily family) {
+    return AllocState(Allocated, family);
+  }
+  static AllocState getFreed(AllocationFamily family) {
+    return AllocState(Freed, family);
+  }
 
-  bool operator==(const AllocState &X) const { return X.K == K; }
+  bool operator==(const AllocState &X) const {
+    return X.K == K && X.Family == Family;
+  }
   void Profile(llvm::FoldingSetNodeID &ID) const { ID.AddInteger(K); }
 };
 
@@ -36,7 +50,8 @@ class AllocFreeChecker
   std::unique_ptr<BugType> LeakBugType;
 
   void reportAllocDeallocMismatch(SymbolRef AddressSym, const CallEvent &Call,
-                                  CheckerContext &C, const char *msg) const;
+                                  CheckerContext &C,
+                                  AllocationFamily family) const;
 
   void reportDoubleFree(SymbolRef AddressSym, const CallEvent &Call,
                         CheckerContext &C, const char *msg) const;
@@ -58,7 +73,7 @@ public:
 } // end anonymous namespace
 
 // Register a map from pointer addresses to their state.
-REGISTER_MAP_WITH_PROGRAMSTATE(AddressMap, SymbolRef, AllocState);
+REGISTER_MAP_WITH_PROGRAMSTATE(AddressMap, SymbolRef, AllocState)
 
 AllocFreeChecker::AllocFreeChecker() {
   AllocDeallocMismatchBugType.reset(
@@ -68,14 +83,37 @@ AllocFreeChecker::AllocFreeChecker() {
   LeakBugType.reset(new BugType(this, "Memory leak", categories::MemoryError));
 }
 
-bool isAllocFunction(const CallEvent &Call) {
-  return Call.isGlobalCFunction("g_malloc") ||
-         Call.isGlobalCFunction("g_malloc0") ||
-         Call.isGlobalCFunction("g_realloc");
+AllocationFamily getAllocFamily(const CallEvent &Call) {
+  if (Call.isGlobalCFunction("g_malloc") ||
+      Call.isGlobalCFunction("g_malloc0") ||
+      Call.isGlobalCFunction("g_realloc")) {
+    return AF_Glib;
+  } else if (Call.isGlobalCFunction("g_strsplit")) {
+    return AF_GlibStringVector;
+  }
+  return AF_None;
 }
 
-bool isListAllocFunction(const CallEvent &Call) {
-  return Call.isGlobalCFunction("g_strsplit");
+AllocationFamily getDeallocFamily(const CallEvent &Call) {
+  if (Call.isGlobalCFunction("g_free")) {
+    return AF_Glib;
+  } else if (Call.isGlobalCFunction("g_strfreev")) {
+    return AF_GlibStringVector;
+  }
+  return AF_None;
+}
+
+void printExpectedDeallocName(raw_ostream &os, AllocationFamily family) {
+  switch (family) {
+  case AF_Glib:
+    os << "g_free";
+    break;
+  case AF_GlibStringVector:
+    os << "g_strfreev";
+    break;
+  case AF_None:
+    llvm_unreachable("suspicious argument");
+  }
 }
 
 /// Process alloc
@@ -84,18 +122,15 @@ void AllocFreeChecker::checkPostCall(const CallEvent &Call,
   if (!Call.isGlobalCFunction())
     return;
 
-  bool is_alloc = isAllocFunction(Call);
-  bool is_list_alloc = !is_alloc && isListAllocFunction(Call);
-  if (is_alloc || is_list_alloc) {
+  AllocationFamily family = getAllocFamily(Call);
+  if (family != AF_None) {
     SymbolRef Address = Call.getReturnValue().getAsSymbol();
     if (!Address)
       return;
 
     // Generate the next transition (an edge in the exploded graph).
     ProgramStateRef State = C.getState();
-    State = State->set<AddressMap>(Address,
-                                   is_alloc ? AllocState::getAllocated()
-                                            : AllocState::getListAllocated());
+    State = State->set<AddressMap>(Address, AllocState::getAllocated(family));
     C.addTransition(State);
   }
 }
@@ -105,9 +140,8 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
   if (!Call.isGlobalCFunction() || Call.getNumArgs() != 1)
     return;
 
-  bool is_dealloc = Call.isGlobalCFunction("g_free");
-  bool is_list_dealloc = !is_dealloc && Call.isGlobalCFunction("g_strfreev");
-  if (is_dealloc || is_list_dealloc) {
+  AllocationFamily family = getDeallocFamily(Call);
+  if (family != AF_None) {
     SymbolRef Address = Call.getArgSVal(0).getAsSymbol();
     if (!Address)
       return;
@@ -116,45 +150,23 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
     ProgramStateRef State = C.getState();
     const AllocState *SS = State->get<AddressMap>(Address);
     if (SS) {
-      if (is_dealloc) {
-        if (SS->isFreed()) {
-          reportDoubleFree(Address, Call, C, "memory was freed before");
-          return;
-        } else if (SS->isListAllocated()) {
-          reportAllocDeallocMismatch(
-              Address, Call, C, "list allocated, but freed as normal memory");
-          return;
-        } else if (!SS->isAllocated()) {
-          reportAllocDeallocMismatch(Address, Call, C,
-                                     "memory is not a list allocation");
-          return;
-        }
-      } else if (is_list_dealloc) {
-        if (SS->isListFreed()) {
-          reportDoubleFree(Address, Call, C, "list was freed before");
-          return;
-        } else if (SS->isAllocated()) {
-          reportAllocDeallocMismatch(
-              Address, Call, C, "normal memory allocated, but freed as list");
-          return;
-        } else if (!SS->isListAllocated()) {
-          reportAllocDeallocMismatch(Address, Call, C,
-                                     "list was not allocated");
-          return;
-        }
+      if (SS->isFreed()) {
+        reportDoubleFree(Address, Call, C, "memory was freed before");
+        return;
+      } else if (!SS->isFamily(family)) {
+        reportAllocDeallocMismatch(Address, Call, C, SS->getAllocationFamily());
+        return;
       }
     }
 
     // Generate the next transition (an edge in the exploded graph).
-    State = State->set<AddressMap>(Address, is_dealloc
-                                                ? AllocState::getFreed()
-                                                : AllocState::getListFreed());
+    State = State->set<AddressMap>(Address, AllocState::getFreed(family));
     C.addTransition(State);
   }
 }
 
 static bool isLeaked(SymbolRef Sym, const AllocState &SS, bool IsSymDead) {
-  if (IsSymDead && (SS.isAllocated() || SS.isListAllocated())) {
+  if (IsSymDead && SS.isAllocated()) {
     return true;
   }
   return false;
@@ -181,10 +193,9 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
   reportLeaks(LeakedAddresses, C, N);
 }
 
-void AllocFreeChecker::reportAllocDeallocMismatch(SymbolRef AddressSym,
-                                                  const CallEvent &Call,
-                                                  CheckerContext &C,
-                                                  const char *msg) const {
+void AllocFreeChecker::reportAllocDeallocMismatch(
+    SymbolRef AddressSym, const CallEvent &Call, CheckerContext &C,
+    AllocationFamily family) const {
   // We reached a bug, stop exploring the path here by generaring a sink.
   ExplodedNode *ErrNode = C.generateErrorNode();
 
@@ -192,9 +203,15 @@ void AllocFreeChecker::reportAllocDeallocMismatch(SymbolRef AddressSym,
   if (!ErrNode)
     return;
 
+  SmallString<100> buf;
+  llvm::raw_svector_ostream os(buf);
+
+  os << "Memory is expected to be deallocated by ";
+  printExpectedDeallocName(os, family);
+
   // Generate a bug report.
-  auto R =
-      llvm::make_unique<BugReport>(*AllocDeallocMismatchBugType, msg, ErrNode);
+  auto R = llvm::make_unique<BugReport>(*AllocDeallocMismatchBugType, os.str(),
+                                        ErrNode);
   R->addRange(Call.getSourceRange());
   R->markInteresting(AddressSym);
   C.emitReport(std::move(R));
