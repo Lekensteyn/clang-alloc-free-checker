@@ -264,9 +264,14 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
   }
 }
 
-static bool isLeaked(SymbolRef Sym, const AllocState &SS, bool IsSymDead) {
+static bool isLeaked(SymbolRef Sym, const AllocState &SS, bool IsSymDead,
+                     ProgramStateRef State) {
   if (IsSymDead && (SS.isAllocated() && !SS.isManagedDeallocation())) {
-    return true;
+    // If a symbol is NULL, no memory was allocated (e.g. g_strdup(NULL)).
+    // A symbol should only be considered leaked if it is non-null.
+    ConstraintManager &CMgr = State->getConstraintManager();
+    ConditionTruthVal AllocFailed = CMgr.isNull(State, Sym);
+    return !AllocFailed.isConstrainedTrue();
   }
   return false;
 }
@@ -282,7 +287,7 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
     SymbolRef Sym = I->first;
     bool IsSymDead = SymReaper.isDead(Sym);
 
-    if (isLeaked(Sym, I->second, IsSymDead))
+    if (isLeaked(Sym, I->second, IsSymDead, State))
       LeakedAddresses.push_back(Sym);
 
     if (IsSymDead)
