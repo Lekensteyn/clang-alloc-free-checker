@@ -247,13 +247,13 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
 
     // Check if the pointer was indeed allocated.
     ProgramStateRef State = C.getState();
-    const AllocState *SS = State->get<AddressMap>(Address);
-    if (SS) {
-      if (SS->isFreed()) {
+    const AllocState *AS = State->get<AddressMap>(Address);
+    if (AS) {
+      if (AS->isFreed()) {
         reportDoubleFree(Address, Call, C, "memory was freed before");
         return;
-      } else if (!SS->isFamily(family)) {
-        reportAllocDeallocMismatch(Address, Call, C, SS->getAllocationFamily());
+      } else if (!AS->isFamily(family)) {
+        reportAllocDeallocMismatch(Address, Call, C, AS->getAllocationFamily());
         return;
       }
     }
@@ -264,9 +264,9 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
   }
 }
 
-static bool isLeaked(SymbolRef Sym, const AllocState &SS, bool IsSymDead,
+static bool isLeaked(SymbolRef Sym, const AllocState &AS, bool IsSymDead,
                      ProgramStateRef State) {
-  if (IsSymDead && (SS.isAllocated() && !SS.isManagedDeallocation())) {
+  if (IsSymDead && (AS.isAllocated() && !AS.isManagedDeallocation())) {
     // If a symbol is NULL, no memory was allocated (e.g. g_strdup(NULL)).
     // A symbol should only be considered leaked if it is non-null.
     ConstraintManager &CMgr = State->getConstraintManager();
