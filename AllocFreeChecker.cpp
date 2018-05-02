@@ -351,11 +351,26 @@ void AllocFreeChecker::reportLeaks(ArrayRef<SymbolRef> LeakedAddresses,
   }
 }
 
+bool guaranteedNotToFreeMemory(const CallEvent &Call) {
+  const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
+  if (!FD)
+    return false;
+  StringRef FName = FD->getName();
+  // Assume that GLib functions (g_*) and wmem functions (wmem_*) do not release
+  // or change the address (that will be handled in PostCall).
+  return FName.startswith("g_") || FName.startswith("wmem_");
+}
+
 // If the pointer we are tracking escaped, do not track the symbol as
 // we cannot reason about it anymore.
 ProgramStateRef AllocFreeChecker::checkPointerEscape(
     ProgramStateRef State, const InvalidatedSymbols &Escaped,
     const CallEvent *Call, PointerEscapeKind Kind) const {
+  // If this memory will not be freed, keep the memory in the state.
+  if (Kind == PSK_DirectEscapeOnCall && guaranteedNotToFreeMemory(*Call)) {
+    return State;
+  }
+
   for (InvalidatedSymbols::const_iterator I = Escaped.begin(),
                                           E = Escaped.end();
        I != E; ++I) {
