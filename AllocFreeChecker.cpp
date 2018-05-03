@@ -8,7 +8,10 @@ using namespace clang;
 using namespace ento;
 
 namespace {
-typedef SmallVector<SymbolRef, 2> SymbolVector;
+
+// record symbols and the original allocation source.
+typedef std::pair<SymbolRef, const ExplodedNode *> LeakInfo;
+typedef SmallVector<LeakInfo, 2> LeakInfoVector;
 
 // Groups allocation and deallocation functions.
 enum AllocationFamily : unsigned {
@@ -83,7 +86,7 @@ class AllocFreeChecker
                         CheckerContext &C, const char *msg) const;
 
   void reportLeak(SymbolRef AddressSym, CheckerContext &C,
-                  ExplodedNode *ErrNode) const;
+                  ExplodedNode *ErrNode, const ExplodedNode *AllocNode) const;
 
 public:
   AllocFreeChecker();
@@ -238,6 +241,26 @@ void printExpectedDeallocName(raw_ostream &os, AllocationFamily family) {
   }
 }
 
+const ExplodedNode *getAllocationSite(const ExplodedNode *N, SymbolRef Sym) {
+  const LocationContext *LeakContext = N->getLocationContext();
+  // Walk the ExplodedGraph backwards and find the first node that referred to
+  // the tracked symbol.
+  const ExplodedNode *AllocNode = N;
+  while (N) {
+    ProgramStateRef State = N->getState();
+    if (!State->get<AddressMap>(Sym))
+      break;
+
+    // Only consider allocations in the same function, or higher in the call
+    // chain.
+    const LocationContext *NContext = N->getLocationContext();
+    if (NContext == LeakContext || NContext->isParentOf(LeakContext))
+      AllocNode = N;
+    N = N->pred_empty() ? nullptr : *(N->pred_begin());
+  }
+  return AllocNode;
+}
+
 /// Process alloc
 void AllocFreeChecker::checkPostCall(const CallEvent &Call,
                                      CheckerContext &C) const {
@@ -306,7 +329,7 @@ static bool isLeaked(SymbolRef Sym, const AllocState &AS, bool IsSymDead,
 void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
                                         CheckerContext &C) const {
   ProgramStateRef State = C.getState();
-  SymbolVector LeakedAddresses;
+  LeakInfoVector LeakInfos;
   AddressMapTy TrackedAddresses = State->get<AddressMap>();
   for (AddressMapTy::iterator I = TrackedAddresses.begin(),
                               E = TrackedAddresses.end();
@@ -314,8 +337,14 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
     SymbolRef Sym = I->first;
     bool IsSymDead = SymReaper.isDead(Sym);
 
-    if (isLeaked(Sym, I->second, IsSymDead, State))
-      LeakedAddresses.push_back(Sym);
+    if (isLeaked(Sym, I->second, IsSymDead, State)) {
+      // Check here for the original node that allocated the memory, this check
+      // will not always be possible when it the symbol is removed from the
+      // state, see below.
+      const ExplodedNode *AllocNode =
+          getAllocationSite(C.getPredecessor(), Sym);
+      LeakInfos.emplace_back(Sym, AllocNode);
+    }
 
     if (IsSymDead)
       State = State->remove<AddressMap>(Sym);
@@ -324,8 +353,8 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
   if (!N)
     return;
   // TODO this sometimes points to the next node (for "p = identityFunction(p)")
-  for (SymbolRef LeakedAddress : LeakedAddresses) {
-    reportLeak(LeakedAddress, C, N);
+  for (LeakInfo Leaked : LeakInfos) {
+    reportLeak(Leaked.first, C, N, Leaked.second);
   }
 }
 
@@ -374,8 +403,20 @@ void AllocFreeChecker::reportDoubleFree(SymbolRef AddressSym,
 }
 
 void AllocFreeChecker::reportLeak(SymbolRef AddressSym, CheckerContext &C,
-                                  ExplodedNode *ErrNode) const {
-  auto R = llvm::make_unique<BugReport>(*LeakBugType, "Memory leak", ErrNode);
+                                  ExplodedNode *ErrNode,
+                                  const ExplodedNode *AllocNode) const {
+  // Most bug reports are cached at the location where they occurred.
+  // With leaks, we want to unique them by the location where they were
+  // allocated, and only report a single path.
+  PathDiagnosticLocation LocUsedForUniqueing;
+  const Stmt *AllocationStmt = PathDiagnosticLocation::getStmt(AllocNode);
+  if (AllocationStmt)
+    LocUsedForUniqueing = PathDiagnosticLocation::createBegin(
+        AllocationStmt, C.getSourceManager(), AllocNode->getLocationContext());
+
+  auto R = llvm::make_unique<BugReport>(
+      *LeakBugType, "Memory leak", ErrNode, LocUsedForUniqueing,
+      AllocNode->getLocationContext()->getDecl());
   R->markInteresting(AddressSym);
   R->addVisitor(llvm::make_unique<MallocBugVisitor>(AddressSym));
   C.emitReport(std::move(R));

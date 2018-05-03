@@ -91,3 +91,12 @@ void checkMemleakEscapedPointer() {
   char *p2 = g_strdup(p); // expected-warning {{Memory leak}}
   g_free(p2);
 }
+
+void checkMemleakReportOnce(int flag) {
+  char *p = (char *)g_malloc(42);
+  if (flag) {
+    p[0] = 1;
+    return;
+  }
+  p[0] = 2;
+} // expected-warning {{Memory leak}}

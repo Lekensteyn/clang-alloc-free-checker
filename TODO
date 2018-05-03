@@ -36,3 +36,10 @@ void AllocFreeChecker::checkPostCall(const CallEvent &Call,
     C.addTransition(State);
     C.getSymbolManager().addSymbolDependency(Arg0.getAsSymbol(), RetVal.getAsSymbol());
   }
+
+DONE
+TODO fold multiple memleaks based on the allocation, not on the exit path.
+Test case: ui/tap-rtp-common.c
+From docs/analyzer/IPA.txt we learn that:
+- LocationContext roughly represents the state of a new function call (including
+  stack frame).
