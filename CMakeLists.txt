@@ -3,9 +3,14 @@ cmake_minimum_required(VERSION 3.4.3)
 project(AllocFreeChecker CXX)
 set(CMAKE_CXX_STANDARD 11)
 
-find_package(LLVM REQUIRED)
+find_package(LLVM REQUIRED CONFIG)
 set(CMAKE_MODULE_PATH ${LLVM_CMAKE_DIR})
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_CMAKE_DIR}")
 include(AddLLVM)
+
+include_directories(${LLVM_INCLUDE_DIRS})
+add_definitions(${LLVM_DEFINITIONS})
 
 #set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/AllocFreePlugin.exports)
 add_llvm_loadable_module(AllocFreePlugin AllocFreeChecker.cpp PLUGIN_TOOL clang)
