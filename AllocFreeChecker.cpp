@@ -161,6 +161,7 @@ WmemAllocator getWmemAllocator(const CallEvent &Call, CheckerContext &C) {
                                   Expr::NPC_ValueDependentIsNotNull))
     return WA_Null;
 
+  ArgE = ArgE->IgnoreParenCasts();
   if (const CallExpr *CE = dyn_cast<CallExpr>(ArgE)) {
     if (const FunctionDecl *FD = CE->getDirectCallee()) {
       StringRef DeallocatorName = FD->getName();

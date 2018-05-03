@@ -19,7 +19,7 @@ void checkPacketScopeMatch() {
 }
 
 void checkFileScopeMatch() {
-  char *p = (char *)wmem_alloc(wmem_file_scope(), 42);
+  char *p = (char *)wmem_alloc((wmem_file_scope()), 42);
   wmem_free(wmem_file_scope(), p);
 }
 
