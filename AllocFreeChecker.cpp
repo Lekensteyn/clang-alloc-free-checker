@@ -62,7 +62,10 @@ public:
   bool operator==(const AllocState &X) const {
     return X.K == K && X.Family == Family;
   }
-  void Profile(llvm::FoldingSetNodeID &ID) const { ID.AddInteger(K); }
+  void Profile(llvm::FoldingSetNodeID &ID) const {
+    ID.AddInteger(K);
+    ID.AddInteger(Family);
+  }
 };
 
 class AllocFreeChecker
