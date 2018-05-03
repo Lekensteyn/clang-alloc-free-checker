@@ -18,26 +18,32 @@ enum AllocationFamily : unsigned {
   AF_None,
   AF_Glib,
   AF_GlibStringVector,
-  AF_WmemNullScope,
-  AF_WmemEpanScope,
-  AF_WmemFileScope,
-  AF_WmemPacketScope,
-  AF_WmemOther
+  AF_Wmem
+};
+
+enum WmemAllocator : unsigned {
+  WA_Invalid,
+  WA_Null,
+  WA_EpanScope,
+  WA_FileScope,
+  WA_PacketScope,
+  WA_Other
 };
 
 bool isWmemAllocationFamily(AllocationFamily family) {
-  return family == AF_WmemNullScope || family == AF_WmemEpanScope ||
-         family == AF_WmemFileScope || family == AF_WmemPacketScope ||
-         family == AF_WmemOther;
+  return family == AF_Wmem;
 }
 
 class AllocState {
   enum Kind : unsigned { Allocated, Freed };
   unsigned K : 1;
-  unsigned Family : 31;
+  unsigned Family : 28;
+  unsigned WA : 3;
 
-  AllocState(Kind InK, AllocationFamily family) : K(InK), Family(family) {
+  AllocState(Kind InK, AllocationFamily family, WmemAllocator wa)
+      : K(InK), Family(family), WA(wa) {
     assert(family != AF_None);
+    assert(isWmemAllocationFamily(family) ^ (WA == WA_Invalid));
   }
 
 public:
@@ -47,27 +53,29 @@ public:
   AllocationFamily getAllocationFamily() const {
     return (AllocationFamily)Family;
   }
+  bool isWmemAllocator(WmemAllocator wa) const { return WA == wa; }
+  WmemAllocator getWmemAllocator() const { return (WmemAllocator)WA; }
 
   /// Returns true if this is scoped wmem-allocated memory that is automatically
   /// freed when the scope is left.
   bool isManagedDeallocation() const {
-    return isWmemAllocationFamily((AllocationFamily)Family) &&
-           Family != AF_WmemNullScope;
+    return isWmemAllocationFamily((AllocationFamily)Family) && WA != WA_Null;
   }
 
-  static AllocState getAllocated(AllocationFamily family) {
-    return AllocState(Allocated, family);
+  static AllocState getAllocated(AllocationFamily family, WmemAllocator wa) {
+    return AllocState(Allocated, family, wa);
   }
-  static AllocState getFreed(AllocationFamily family) {
-    return AllocState(Freed, family);
+  static AllocState getFreed(AllocationFamily family, WmemAllocator wa) {
+    return AllocState(Freed, family, wa);
   }
 
   bool operator==(const AllocState &X) const {
-    return X.K == K && X.Family == Family;
+    return X.K == K && X.Family == Family && X.WA == WA;
   }
   void Profile(llvm::FoldingSetNodeID &ID) const {
     ID.AddInteger(K);
     ID.AddInteger(Family);
+    ID.AddInteger(WA);
   }
 };
 
@@ -79,8 +87,8 @@ class AllocFreeChecker
   std::unique_ptr<BugType> LeakBugType;
 
   void reportAllocDeallocMismatch(SymbolRef AddressSym, const CallEvent &Call,
-                                  CheckerContext &C,
-                                  AllocationFamily family) const;
+                                  CheckerContext &C, AllocationFamily family,
+                                  WmemAllocator wmemAllocator) const;
 
   void reportDoubleFree(SymbolRef AddressSym, const CallEvent &Call,
                         CheckerContext &C, const char *msg) const;
@@ -143,37 +151,37 @@ AllocFreeChecker::AllocFreeChecker() {
   LeakBugType->setSuppressOnSink(true);
 }
 
-AllocationFamily getWmemFamily(const CallEvent &Call, CheckerContext &C) {
+WmemAllocator getWmemAllocator(const CallEvent &Call, CheckerContext &C) {
   const Expr *ArgE = Call.getArgExpr(0);
   if (!ArgE)
-    return AF_None;
+    return WA_Invalid;
 
   if (ArgE->isNullPointerConstant(C.getASTContext(),
                                   Expr::NPC_ValueDependentIsNotNull))
-    return AF_WmemNullScope;
+    return WA_Null;
 
   if (const CallExpr *CE = dyn_cast<CallExpr>(ArgE)) {
     if (const FunctionDecl *FD = CE->getDirectCallee()) {
       StringRef DeallocatorName = FD->getName();
       if (DeallocatorName == "wmem_epan_scope") {
-        return AF_WmemEpanScope;
+        return WA_EpanScope;
       }
       if (DeallocatorName == "wmem_file_scope") {
-        return AF_WmemFileScope;
+        return WA_FileScope;
       }
       if (DeallocatorName == "wmem_packet_scope") {
-        return AF_WmemPacketScope;
+        return WA_PacketScope;
       }
     }
     // Unknown scope
-    return AF_WmemOther;
+    return WA_Other;
   }
 
   // Unknown type (perhaps pinfo->pool?)
-  return AF_WmemOther;
+  return WA_Other;
 }
 
-AllocationFamily getAllocFamily(const CallEvent &Call, CheckerContext &C) {
+AllocationFamily getAllocFamily(const CallEvent &Call) {
   if (Call.isGlobalCFunction("g_malloc") ||
       Call.isGlobalCFunction("g_malloc0") ||
       Call.isGlobalCFunction("g_memdup") ||
@@ -196,24 +204,25 @@ AllocationFamily getAllocFamily(const CallEvent &Call, CheckerContext &C) {
              Call.isGlobalCFunction("wmem_strjoinv") ||
              Call.isGlobalCFunction("wmem_strsplit") ||
              Call.isGlobalCFunction("wmem_ascii_strdown")) {
-    return getWmemFamily(Call, C);
+    return AF_Wmem;
   }
   return AF_None;
 }
 
-AllocationFamily getDeallocFamily(const CallEvent &Call, CheckerContext &C) {
+AllocationFamily getDeallocFamily(const CallEvent &Call) {
   if (Call.isGlobalCFunction("g_free") || Call.isGlobalCFunction("g_realloc")) {
     return AF_Glib;
   } else if (Call.isGlobalCFunction("g_strfreev")) {
     return AF_GlibStringVector;
   } else if (Call.isGlobalCFunction("wmem_free") ||
              Call.isGlobalCFunction("wmem_realloc")) {
-    return getWmemFamily(Call, C);
+    return AF_Wmem;
   }
   return AF_None;
 }
 
-void printExpectedDeallocName(raw_ostream &os, AllocationFamily family) {
+void printExpectedDeallocName(raw_ostream &os, AllocationFamily family,
+                              WmemAllocator wmemAllocator) {
   switch (family) {
   case AF_Glib:
     os << "g_free";
@@ -221,20 +230,26 @@ void printExpectedDeallocName(raw_ostream &os, AllocationFamily family) {
   case AF_GlibStringVector:
     os << "g_strfreev";
     break;
-  case AF_WmemNullScope:
-    os << "wmem_free(NULL, ...)";
-    break;
-  case AF_WmemEpanScope:
-    os << "wmem_free(wmem_epan_scope(), ...)";
-    break;
-  case AF_WmemFileScope:
-    os << "wmem_free(wmem_file_scope(), ...)";
-    break;
-  case AF_WmemPacketScope:
-    os << "wmem_free(wmem_packet_scope(), ...)";
-    break;
-  case AF_WmemOther:
-    os << "wmem_free";
+  case AF_Wmem:
+    switch (wmemAllocator) {
+    case WA_Null:
+      os << "wmem_free(NULL, ...)";
+      break;
+    case WA_EpanScope:
+      os << "wmem_free(wmem_epan_scope(), ...)";
+      break;
+    case WA_FileScope:
+      os << "wmem_free(wmem_file_scope(), ...)";
+      break;
+    case WA_PacketScope:
+      os << "wmem_free(wmem_packet_scope(), ...)";
+      break;
+    case WA_Other:
+      os << "wmem_free";
+      break;
+    case WA_Invalid:
+      llvm_unreachable("suspicious wmem allocator argument");
+    }
     break;
   case AF_None:
     llvm_unreachable("suspicious argument");
@@ -267,15 +282,19 @@ void AllocFreeChecker::checkPostCall(const CallEvent &Call,
   if (!Call.isGlobalCFunction() || Call.getNumArgs() == 0)
     return;
 
-  AllocationFamily family = getAllocFamily(Call, C);
+  AllocationFamily family = getAllocFamily(Call);
   if (family != AF_None) {
     SymbolRef Address = Call.getReturnValue().getAsSymbol();
     if (!Address)
       return;
 
+    WmemAllocator WA =
+        isWmemAllocationFamily(family) ? getWmemAllocator(Call, C) : WA_Invalid;
+
     // Generate the next transition (an edge in the exploded graph).
     ProgramStateRef State = C.getState();
-    State = State->set<AddressMap>(Address, AllocState::getAllocated(family));
+    State =
+        State->set<AddressMap>(Address, AllocState::getAllocated(family, WA));
     C.addTransition(State);
   }
 }
@@ -285,7 +304,7 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
   if (!Call.isGlobalCFunction() || Call.getNumArgs() == 0)
     return;
 
-  AllocationFamily family = getDeallocFamily(Call, C);
+  AllocationFamily family = getDeallocFamily(Call);
   if (family != AF_None) {
     unsigned pointerParam = isWmemAllocationFamily(family) ? 1 : 0;
     if (Call.getNumArgs() < pointerParam + 1)
@@ -295,6 +314,9 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
     if (!Address)
       return;
 
+    WmemAllocator WA =
+        isWmemAllocationFamily(family) ? getWmemAllocator(Call, C) : WA_Invalid;
+
     // Check if the pointer was indeed allocated.
     ProgramStateRef State = C.getState();
     const AllocState *AS = State->get<AddressMap>(Address);
@@ -303,13 +325,18 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
         reportDoubleFree(Address, Call, C, "memory was freed before");
         return;
       } else if (!AS->isFamily(family)) {
-        reportAllocDeallocMismatch(Address, Call, C, AS->getAllocationFamily());
+        reportAllocDeallocMismatch(Address, Call, C, AS->getAllocationFamily(),
+                                   AS->getWmemAllocator());
+        return;
+      } else if (isWmemAllocationFamily(family) && !AS->isWmemAllocator(WA)) {
+        reportAllocDeallocMismatch(Address, Call, C, AS->getAllocationFamily(),
+                                   AS->getWmemAllocator());
         return;
       }
     }
 
     // Generate the next transition (an edge in the exploded graph).
-    State = State->set<AddressMap>(Address, AllocState::getFreed(family));
+    State = State->set<AddressMap>(Address, AllocState::getFreed(family, WA));
     C.addTransition(State);
   }
 }
@@ -360,7 +387,7 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
 
 void AllocFreeChecker::reportAllocDeallocMismatch(
     SymbolRef AddressSym, const CallEvent &Call, CheckerContext &C,
-    AllocationFamily family) const {
+    AllocationFamily family, WmemAllocator wmemAllocator) const {
   // We reached a bug, stop exploring the path here by generating a sink.
   ExplodedNode *ErrNode = C.generateErrorNode();
 
@@ -372,7 +399,7 @@ void AllocFreeChecker::reportAllocDeallocMismatch(
   llvm::raw_svector_ostream os(buf);
 
   os << "Memory is expected to be deallocated by ";
-  printExpectedDeallocName(os, family);
+  printExpectedDeallocName(os, family, wmemAllocator);
 
   // Generate a bug report.
   auto R = llvm::make_unique<BugReport>(*AllocDeallocMismatchBugType, os.str(),
