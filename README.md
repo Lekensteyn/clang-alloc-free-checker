@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/Lekensteyn/clang-alloc-free-checker.svg?branch=master)](https://travis-ci.org/Lekensteyn/clang-alloc-free-checker)
+
 # Clang Static Analyzer plugin for memory issues
 [Clang Static Analyzer](https://clang-analyzer.llvm.org/) is a source code
 analysis tool that can spot bugs in C and C++ projects such as Wireshark. This
