@@ -97,6 +97,30 @@ public:
                                      const InvalidatedSymbols &Escaped,
                                      const CallEvent *Call,
                                      PointerEscapeKind Kind) const;
+
+  /// The bug visitor which allows us to print extra diagnostics along the
+  /// BugReport path. For example, showing the allocation site of the leaked
+  /// region.
+  class MallocBugVisitor final
+      : public BugReporterVisitorImpl<MallocBugVisitor> {
+    // The symbol representing the memory allocated by malloc.
+    SymbolRef Sym;
+
+  public:
+    MallocBugVisitor(SymbolRef S) : Sym(S) {}
+    void Profile(llvm::FoldingSetNodeID &ID) const override {
+      // This presumably exists to ensure that this node is not folded into
+      // another due to being considered equivalent.
+      static int X = 0;
+      ID.AddPointer(&X);
+      ID.AddPointer(Sym);
+    }
+
+    std::shared_ptr<PathDiagnosticPiece> VisitNode(const ExplodedNode *N,
+                                                   const ExplodedNode *PrevN,
+                                                   BugReporterContext &BRC,
+                                                   BugReport &BR) override;
+  };
 };
 } // end anonymous namespace
 
@@ -320,6 +344,7 @@ void AllocFreeChecker::reportAllocDeallocMismatch(
                                         ErrNode);
   R->addRange(Call.getSourceRange());
   R->markInteresting(AddressSym);
+  R->addVisitor(llvm::make_unique<MallocBugVisitor>(AddressSym));
   C.emitReport(std::move(R));
 }
 
@@ -338,6 +363,7 @@ void AllocFreeChecker::reportDoubleFree(SymbolRef AddressSym,
   auto R = llvm::make_unique<BugReport>(*DoubleFreeBugType, msg, ErrNode);
   R->addRange(Call.getSourceRange());
   R->markInteresting(AddressSym);
+  R->addVisitor(llvm::make_unique<MallocBugVisitor>(AddressSym));
   C.emitReport(std::move(R));
 }
 
@@ -347,6 +373,7 @@ void AllocFreeChecker::reportLeaks(ArrayRef<SymbolRef> LeakedAddresses,
   for (SymbolRef LeakedAddress : LeakedAddresses) {
     auto R = llvm::make_unique<BugReport>(*LeakBugType, "Memory leak", ErrNode);
     R->markInteresting(LeakedAddress);
+    R->addVisitor(llvm::make_unique<MallocBugVisitor>(LeakedAddress));
     C.emitReport(std::move(R));
   }
 }
@@ -381,6 +408,41 @@ ProgramStateRef AllocFreeChecker::checkPointerEscape(
     State = State->remove<AddressMap>(Sym);
   }
   return State;
+}
+
+std::shared_ptr<PathDiagnosticPiece>
+AllocFreeChecker::MallocBugVisitor::VisitNode(const ExplodedNode *N,
+                                              const ExplodedNode *PrevN,
+                                              BugReporterContext &BRC,
+                                              BugReport &BR) {
+  ProgramStateRef state = N->getState();
+  ProgramStateRef statePrev = PrevN->getState();
+
+  const AllocState *AS = state->get<AddressMap>(Sym);
+  const AllocState *ASPrev = statePrev->get<AddressMap>(Sym);
+  if (!AS)
+    return nullptr;
+
+  const Stmt *S = PathDiagnosticLocation::getStmt(N);
+  if (!S)
+    return nullptr;
+
+  const char *Msg = nullptr;
+  // Mark new memory allocations (transition unknown/unallocated -> allocated)
+  if ((!ASPrev || !ASPrev->isAllocated()) && AS->isAllocated()) {
+    Msg = "Memory is allocated";
+  }
+  // Mark freeing of memory (transition unknown/allocated -> freed)
+  if ((!ASPrev || ASPrev->isAllocated()) && AS->isFreed()) {
+    Msg = "Memory is released";
+  }
+  if (!Msg)
+    return nullptr;
+
+  // Generate the extra diagnostic.
+  PathDiagnosticLocation Pos(S, BRC.getSourceManager(),
+                             N->getLocationContext());
+  return std::make_shared<PathDiagnosticEventPiece>(Pos, Msg, true);
 }
 
 #if 0
