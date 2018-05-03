@@ -1,3 +1,6 @@
+// Copyright (c) 2018 Peter Wu <peter@lekensteyn.nl>
+// SPDX-License-Identifier: MIT
+
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerRegistry.h"
