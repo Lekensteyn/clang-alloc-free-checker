@@ -18,7 +18,8 @@ enum AllocationFamily : unsigned {
   AF_None,
   AF_Glib,
   AF_GlibStringVector,
-  AF_Wmem
+  AF_Wmem,
+  AF_WmemStringVector
 };
 
 enum WmemAllocator : unsigned {
@@ -31,7 +32,7 @@ enum WmemAllocator : unsigned {
 };
 
 bool isWmemAllocationFamily(AllocationFamily family) {
-  return family == AF_Wmem;
+  return family == AF_Wmem || family == AF_WmemStringVector;
 }
 
 class AllocState {
@@ -93,7 +94,7 @@ class AllocFreeChecker
   void reportDoubleFree(SymbolRef AddressSym, const CallEvent &Call,
                         CheckerContext &C, const char *msg) const;
 
-  void reportLeak(SymbolRef AddressSym, CheckerContext &C,
+  void reportLeak(SymbolRef AddressSym, CheckerContext &C, bool potential,
                   ExplodedNode *ErrNode, const ExplodedNode *AllocNode) const;
 
 public:
@@ -202,9 +203,10 @@ AllocationFamily getAllocFamily(const CallEvent &Call) {
              Call.isGlobalCFunction("wmem_strconcat") ||
              Call.isGlobalCFunction("wmem_strjoin") ||
              Call.isGlobalCFunction("wmem_strjoinv") ||
-             Call.isGlobalCFunction("wmem_strsplit") ||
              Call.isGlobalCFunction("wmem_ascii_strdown")) {
     return AF_Wmem;
+  } else if (Call.isGlobalCFunction("wmem_strsplit")) {
+    return AF_WmemStringVector;
   }
   return AF_None;
 }
@@ -231,6 +233,7 @@ void printExpectedDeallocName(raw_ostream &os, AllocationFamily family,
     os << "g_strfreev";
     break;
   case AF_Wmem:
+  case AF_WmemStringVector: // TODO find better API for wmem_strsplit
     switch (wmemAllocator) {
     case WA_Null:
       os << "wmem_free(NULL, ...)";
@@ -321,6 +324,12 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
     ProgramStateRef State = C.getState();
     const AllocState *AS = State->get<AddressMap>(Address);
     if (AS) {
+      // Special case: wmem_strsplit currently does not have a dedicated free
+      // function. Treat wmem_free with the correct scope as its free function.
+      if (AS->isFamily(AF_WmemStringVector) && family == AF_Wmem) {
+        family = AF_WmemStringVector;
+      }
+
       if (AS->isFreed()) {
         reportDoubleFree(Address, Call, C, "memory was freed before");
         return;
@@ -332,6 +341,14 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
         reportAllocDeallocMismatch(Address, Call, C, AS->getAllocationFamily(),
                                    AS->getWmemAllocator());
         return;
+      } else if (family == AF_WmemStringVector) {
+        // wmem_packet_scope is quite transient, assume that other scopes are
+        // not safe and indicate a memleak.
+        if (!AS->isWmemAllocator(WA_PacketScope)) {
+          ExplodedNode *N = C.generateNonFatalErrorNode(State);
+          const ExplodedNode *AllocNode = getAllocationSite(N, Address);
+          reportLeak(Address, C, true, N, AllocNode);
+        }
       }
     }
 
@@ -381,7 +398,7 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
     return;
   // TODO this sometimes points to the next node (for "p = identityFunction(p)")
   for (LeakInfo Leaked : LeakInfos) {
-    reportLeak(Leaked.first, C, N, Leaked.second);
+    reportLeak(Leaked.first, C, false, N, Leaked.second);
   }
 }
 
@@ -430,7 +447,7 @@ void AllocFreeChecker::reportDoubleFree(SymbolRef AddressSym,
 }
 
 void AllocFreeChecker::reportLeak(SymbolRef AddressSym, CheckerContext &C,
-                                  ExplodedNode *ErrNode,
+                                  bool potential, ExplodedNode *ErrNode,
                                   const ExplodedNode *AllocNode) const {
   // Most bug reports are cached at the location where they occurred.
   // With leaks, we want to unique them by the location where they were
@@ -442,8 +459,8 @@ void AllocFreeChecker::reportLeak(SymbolRef AddressSym, CheckerContext &C,
         AllocationStmt, C.getSourceManager(), AllocNode->getLocationContext());
 
   auto R = llvm::make_unique<BugReport>(
-      *LeakBugType, "Memory leak", ErrNode, LocUsedForUniqueing,
-      AllocNode->getLocationContext()->getDecl());
+      *LeakBugType, potential ? "Potential memory leak" : "Memory leak",
+      ErrNode, LocUsedForUniqueing, AllocNode->getLocationContext()->getDecl());
   R->markInteresting(AddressSym);
   R->addVisitor(llvm::make_unique<MallocBugVisitor>(AddressSym));
   C.emitReport(std::move(R));

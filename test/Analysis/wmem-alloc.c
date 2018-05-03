@@ -11,7 +11,12 @@ void checkNormalFree() {
 void checkNormalListFree() {
   char **p = wmem_strsplit(NULL, "", "", -1);
   // TODO API design issue: there is no good way to delete elements.
-  wmem_free(NULL, p);
+  wmem_free(NULL, p); // expected-warning {{Potential memory leak}}
+}
+
+void checkPacketScopedListFree() {
+  char **p = wmem_strsplit(wmem_packet_scope(), "", "", -1);
+  wmem_free(wmem_packet_scope(), p);
 }
 
 void checkDoubleFree() {
