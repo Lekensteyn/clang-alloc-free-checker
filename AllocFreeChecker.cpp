@@ -86,9 +86,19 @@ public:
 class AllocFreeChecker
     : public Checker<check::PostCall, check::PreCall, check::DeadSymbols,
                      check::PointerEscape> {
+  CallDescription FuncGFree, FuncGMalloc, FuncGMalloc0, FuncGMemdup,
+      FuncGRealloc, FuncGStrdup, FuncGStrdupv, FuncGStrfreev, FuncGStrndup,
+      FuncGStrsplit, FuncWmemAlloc, FuncWmemAlloc0, FuncWmemAsciiStrdown,
+      FuncWmemFree, FuncWmemRealloc, FuncWmemStrconcat, FuncWmemStrdup,
+      FuncWmemStrdupPrintf, FuncWmemStrdupVprintf, FuncWmemStrjoin,
+      FuncWmemStrjoinv, FuncWmemStrndup, FuncWmemStrsplit;
+
   std::unique_ptr<BugType> AllocDeallocMismatchBugType;
   std::unique_ptr<BugType> DoubleFreeBugType;
   std::unique_ptr<BugType> LeakBugType;
+
+  AllocationFamily getAllocFamily(const CallEvent &Call) const;
+  AllocationFamily getDeallocFamily(const CallEvent &Call) const;
 
   void reportAllocDeallocMismatch(SymbolRef AddressSym, const CallEvent &Call,
                                   CheckerContext &C, AllocationFamily family,
@@ -145,7 +155,19 @@ public:
 // Register a map from pointer addresses to their state.
 REGISTER_MAP_WITH_PROGRAMSTATE(AddressMap, SymbolRef, AllocState)
 
-AllocFreeChecker::AllocFreeChecker() {
+AllocFreeChecker::AllocFreeChecker()
+    : FuncGFree("g_free"), FuncGMalloc("g_malloc"), FuncGMalloc0("g_malloc0"),
+      FuncGMemdup("g_memdup"), FuncGRealloc("g_realloc"),
+      FuncGStrdup("g_strdup"), FuncGStrdupv("g_strdupv"),
+      FuncGStrfreev("g_strfreev"), FuncGStrndup("g_strndup"),
+      FuncGStrsplit("g_strsplit"), FuncWmemAlloc("wmem_alloc"),
+      FuncWmemAlloc0("wmem_alloc0"), FuncWmemAsciiStrdown("wmem_ascii_strdown"),
+      FuncWmemFree("wmem_free"), FuncWmemRealloc("wmem_realloc"),
+      FuncWmemStrconcat("wmem_strconcat"), FuncWmemStrdup("wmem_strdup"),
+      FuncWmemStrdupPrintf("wmem_strdup_printf"),
+      FuncWmemStrdupVprintf("wmem_strdup_vprintf"),
+      FuncWmemStrjoin("wmem_strjoin"), FuncWmemStrjoinv("wmem_strjoinv"),
+      FuncWmemStrndup("wmem_strndup"), FuncWmemStrsplit("wmem_strsplit") {
   AllocDeallocMismatchBugType.reset(
       new BugType(this, "Alloc-dealloc mismatch", categories::MemoryError));
   DoubleFreeBugType.reset(
@@ -186,42 +208,36 @@ WmemAllocator getWmemAllocator(const CallEvent &Call, CheckerContext &C) {
   return WA_Other;
 }
 
-AllocationFamily getAllocFamily(const CallEvent &Call) {
-  if (Call.isGlobalCFunction("g_malloc") ||
-      Call.isGlobalCFunction("g_malloc0") ||
-      Call.isGlobalCFunction("g_memdup") ||
-      Call.isGlobalCFunction("g_strdup") ||
-      Call.isGlobalCFunction("g_strndup") ||
-      Call.isGlobalCFunction("g_realloc")) {
+AllocationFamily AllocFreeChecker::getAllocFamily(const CallEvent &Call) const {
+  if (Call.isCalled(FuncGMalloc) || Call.isCalled(FuncGMalloc0) ||
+      Call.isCalled(FuncGMemdup) || Call.isCalled(FuncGStrdup) ||
+      Call.isCalled(FuncGStrndup) || Call.isCalled(FuncGRealloc)) {
     return AF_Glib;
-  } else if (Call.isGlobalCFunction("g_strsplit") ||
-             Call.isGlobalCFunction("g_strdupv")) {
+  } else if (Call.isCalled(FuncGStrsplit) || Call.isCalled(FuncGStrdupv)) {
     return AF_GlibStringVector;
-  } else if (Call.isGlobalCFunction("wmem_alloc") ||
-             Call.isGlobalCFunction("wmem_alloc0") ||
-             Call.isGlobalCFunction("wmem_realloc") ||
-             Call.isGlobalCFunction("wmem_strdup") ||
-             Call.isGlobalCFunction("wmem_strndup") ||
-             Call.isGlobalCFunction("wmem_strdup_printf") ||
-             Call.isGlobalCFunction("wmem_strdup_vprintf") ||
-             Call.isGlobalCFunction("wmem_strconcat") ||
-             Call.isGlobalCFunction("wmem_strjoin") ||
-             Call.isGlobalCFunction("wmem_strjoinv") ||
-             Call.isGlobalCFunction("wmem_ascii_strdown")) {
+  } else if (Call.isCalled(FuncWmemAlloc) || Call.isCalled(FuncWmemAlloc0) ||
+             Call.isCalled(FuncWmemRealloc) || Call.isCalled(FuncWmemStrdup) ||
+             Call.isCalled(FuncWmemStrndup) ||
+             Call.isCalled(FuncWmemStrdupPrintf) ||
+             Call.isCalled(FuncWmemStrdupVprintf) ||
+             Call.isCalled(FuncWmemStrconcat) ||
+             Call.isCalled(FuncWmemStrjoin) ||
+             Call.isCalled(FuncWmemStrjoinv) ||
+             Call.isCalled(FuncWmemAsciiStrdown)) {
     return AF_Wmem;
-  } else if (Call.isGlobalCFunction("wmem_strsplit")) {
+  } else if (Call.isCalled(FuncWmemStrsplit)) {
     return AF_WmemStringVector;
   }
   return AF_None;
 }
 
-AllocationFamily getDeallocFamily(const CallEvent &Call) {
-  if (Call.isGlobalCFunction("g_free") || Call.isGlobalCFunction("g_realloc")) {
+AllocationFamily
+AllocFreeChecker::getDeallocFamily(const CallEvent &Call) const {
+  if (Call.isCalled(FuncGFree) || Call.isCalled(FuncGRealloc)) {
     return AF_Glib;
-  } else if (Call.isGlobalCFunction("g_strfreev")) {
+  } else if (Call.isCalled(FuncGStrfreev)) {
     return AF_GlibStringVector;
-  } else if (Call.isGlobalCFunction("wmem_free") ||
-             Call.isGlobalCFunction("wmem_realloc")) {
+  } else if (Call.isCalled(FuncWmemFree) || Call.isCalled(FuncWmemRealloc)) {
     return AF_Wmem;
   }
   return AF_None;
