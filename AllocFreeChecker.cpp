@@ -320,6 +320,7 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
   ExplodedNode *N = C.generateNonFatalErrorNode(State);
   if (!N)
     return;
+  // TODO this sometimes points to the next node (for "p = identityFunction(p)")
   reportLeaks(LeakedAddresses, C, N);
 }
 
@@ -385,7 +386,8 @@ bool guaranteedNotToFreeMemory(const CallEvent &Call) {
   StringRef FName = FD->getName();
   // Assume that GLib functions (g_*) and wmem functions (wmem_*) do not release
   // or change the address (that will be handled in PostCall).
-  return FName.startswith("g_") || FName.startswith("wmem_");
+  return FName.startswith("g_free") || FName.startswith("g_realloc") ||
+         FName.startswith("wmem_free") || FName.startswith("wmem_realloc");
 }
 
 // If the pointer we are tracking escaped, do not track the symbol as

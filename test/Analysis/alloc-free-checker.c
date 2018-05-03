@@ -70,3 +70,24 @@ void checkListFreeMismatch4() {
   char **p = (char **)g_strndup("", 1);
   g_strfreev(p); // expected-warning {{Memory is expected to be deallocated by g_free}}
 }
+
+void checkIdentityFunction() {
+  char *p = g_strdup("");
+  // original "p" should not be marked as leaked because g_strdelimit returns the same "p".
+  p = g_strdelimit(p, "_", '-');
+  g_free(p);
+}
+
+void checkNoMemLeaks() {
+  char *p = g_strdup("");
+  char *p2 = g_strdup(p);
+  g_free(p);
+  g_free(p2);
+}
+
+void checkMemleakEscapedPointer() {
+  char *p = g_strdup("");
+  // "p" leaks. It should probably not be marked here, but that is what is implemented.
+  char *p2 = g_strdup(p); // expected-warning {{Memory leak}}
+  g_free(p2);
+}

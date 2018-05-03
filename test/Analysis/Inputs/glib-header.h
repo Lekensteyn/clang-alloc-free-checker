@@ -23,3 +23,6 @@ gchar **g_strdupv(gchar **str_array);
 gchar **g_strsplit(const gchar *string, const gchar *delimiter,
                    gint max_tokens);
 void g_strfreev(gchar **str_array);
+
+gchar *g_strdelimit(gchar *string, const gchar *delimiters,
+                    gchar new_delimiter);
