@@ -82,8 +82,8 @@ class AllocFreeChecker
   void reportDoubleFree(SymbolRef AddressSym, const CallEvent &Call,
                         CheckerContext &C, const char *msg) const;
 
-  void reportLeaks(ArrayRef<SymbolRef> LeakedAddresses, CheckerContext &C,
-                   ExplodedNode *ErrNode) const;
+  void reportLeak(SymbolRef AddressSym, CheckerContext &C,
+                  ExplodedNode *ErrNode) const;
 
 public:
   AllocFreeChecker();
@@ -324,7 +324,9 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
   if (!N)
     return;
   // TODO this sometimes points to the next node (for "p = identityFunction(p)")
-  reportLeaks(LeakedAddresses, C, N);
+  for (SymbolRef LeakedAddress : LeakedAddresses) {
+    reportLeak(LeakedAddress, C, N);
+  }
 }
 
 void AllocFreeChecker::reportAllocDeallocMismatch(
@@ -371,15 +373,12 @@ void AllocFreeChecker::reportDoubleFree(SymbolRef AddressSym,
   C.emitReport(std::move(R));
 }
 
-void AllocFreeChecker::reportLeaks(ArrayRef<SymbolRef> LeakedAddresses,
-                                   CheckerContext &C,
-                                   ExplodedNode *ErrNode) const {
-  for (SymbolRef LeakedAddress : LeakedAddresses) {
-    auto R = llvm::make_unique<BugReport>(*LeakBugType, "Memory leak", ErrNode);
-    R->markInteresting(LeakedAddress);
-    R->addVisitor(llvm::make_unique<MallocBugVisitor>(LeakedAddress));
-    C.emitReport(std::move(R));
-  }
+void AllocFreeChecker::reportLeak(SymbolRef AddressSym, CheckerContext &C,
+                                  ExplodedNode *ErrNode) const {
+  auto R = llvm::make_unique<BugReport>(*LeakBugType, "Memory leak", ErrNode);
+  R->markInteresting(AddressSym);
+  R->addVisitor(llvm::make_unique<MallocBugVisitor>(AddressSym));
+  C.emitReport(std::move(R));
 }
 
 bool guaranteedNotToFreeMemory(const CallEvent &Call) {
