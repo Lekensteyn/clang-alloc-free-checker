@@ -28,7 +28,7 @@ add_custom_target(check-AllocFreePlugin)
 foreach(_test alloc-free-checker wmem-alloc wmem-scope)
   add_custom_target(check-${_test}
     COMMAND
-        clang -cc1 -analyze
+        ${LLVM_TOOLS_BINARY_DIR}/clang -cc1 -analyze
         -load $<TARGET_FILE:AllocFreePlugin>
         -analyzer-checker=core,alpha.AllocFree
         -verify ${CMAKE_CURRENT_SOURCE_DIR}/test/Analysis/${_test}.c
