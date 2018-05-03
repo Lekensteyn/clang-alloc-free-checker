@@ -1,0 +1,38 @@
+TODO Replace isGlobalCFunction by something more efficient
+1baedeccd6989bcf270f1fcd2e6b37d5dcb9f46e
+[analyzer] Utility to match function calls.
+http://reviews.llvm.org/D15921
+
+
+DONE
+TODO add pointer escape detection (hopefully fixes false positives)
+4b6bb40b22877472d0b3d2961689f1f0ac23cc71
+[analyzer] Convert SimpleStreamChecker to use the PointerEscape callback
+
+
+DONE
+TODO mark malloc/free nodes on path. See MallocChecker.cpp for example.
+It probably needs implementation of a BugReporterVisitor (VisitNode) and a
+corresponding R->addVisitor(llvm::make_unique<...BugVisitor>(Sym));
+
+TODO handle identity functions that invalidate other symbols. Can I mark a
+symbol as being equivalent to another such that it is not marked as escaped
+pointer?
+void AllocFreeChecker::checkPostCall(const CallEvent &Call,
+                                     CheckerContext &C) const {
+  // ...
+  if (Call.isGlobalCFunction("g_strdelimit")) {
+    // Assume identity function "p = g_strdelimit(p, ...)" where the return
+    // value is equivalent to the argument.
+    // TODO this somehow still results in a leaked symbol?
+    SValBuilder &svalBuilder = C.getSValBuilder();
+    ProgramStateRef State = C.getState();
+    SVal Arg0 = Call.getArgSVal(0);
+    SVal RetVal = Call.getReturnValue();
+    DefinedOrUnknownSVal arg0 = Arg0.castAs<DefinedOrUnknownSVal>();
+    DefinedOrUnknownSVal retVal = RetVal.castAs<DefinedOrUnknownSVal>();
+    DefinedOrUnknownSVal PtrEQ = svalBuilder.evalEQ(State, arg0, retVal);
+    State = State->assume(PtrEQ, true);
+    C.addTransition(State);
+    C.getSymbolManager().addSymbolDependency(Arg0.getAsSymbol(), RetVal.getAsSymbol());
+  }
