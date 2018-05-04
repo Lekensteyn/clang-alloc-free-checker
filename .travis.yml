@@ -31,10 +31,10 @@ matrix:
             - libclang-6.0-dev
             - llvm-6.0-dev
 before_install:
+  - sudo ci/fix-clang-packaging.sh
   - CC=clang-$CLANG_VERSION
   - CXX=clang++-$CLANG_VERSION
-  - export LLVM_DIR=/usr/lib/llvm-$CLANG_VERSION
-  - export Clang_DIR=/usr/share/llvm-$CLANG_VERSION/cmake
+  - export CMAKE_PREFIX_PATH=/usr/lib/llvm-$CLANG_VERSION
 before_script:
   - mkdir build
   - cd build
