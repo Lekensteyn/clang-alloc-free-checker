@@ -182,8 +182,10 @@ WmemAllocator getWmemAllocator(const CallEvent &Call, CheckerContext &C) {
   if (!ArgE)
     return WA_Invalid;
 
-  if (ArgE->isNullPointerConstant(C.getASTContext(),
-                                  Expr::NPC_ValueDependentIsNotNull))
+  // If this is a NULL macro or otherwise an expression that evaluates as such,
+  // then assume a NULL scope.
+  SVal ArgSVal = Call.getArgSVal(0);
+  if (ArgSVal.isZeroConstant())
     return WA_Null;
 
   ArgE = ArgE->IgnoreParenCasts();

@@ -88,3 +88,11 @@ useful overview of methods that can be used:
 - [CheckerContext](https://clang.llvm.org/doxygen/classclang_1_1ento_1_1CheckerContext.html)
 - [ProgramState](https://clang.llvm.org/doxygen/classclang_1_1ento_1_1ProgramState.html)
 - [Stmt](https://clang.llvm.org/doxygen/classclang_1_1Stmt.html)
+
+Other potentially helpful links:
+- [\[cfe-dev\] Checking if a ParmVarDecl is null in a Checker](https://lists.llvm.org/pipermail/cfe-dev/2018-April/057757.html)
+- That thread linked to this [Checker Developer's Guide (PDF)](https://github.com/haoNoQ/clang-analyzer-guide/releases/download/v0.1/clang-analyzer-guide-v0.1.pdf).
+
+Random hints:
+- The command `clang -cc1 -analyze -analyzer-checker=debug.ViewExplodedGraph`
+  requires Clang to be built in debug mode or nothing appears to happen.
