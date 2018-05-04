@@ -34,6 +34,7 @@ before_install:
   - CC=clang-$CLANG_VERSION
   - CXX=clang++-$CLANG_VERSION
   - export LLVM_DIR=/usr/lib/llvm-$CLANG_VERSION
+  - export Clang_DIR=/usr/share/llvm-$CLANG_VERSION/cmake
 before_script:
   - mkdir build
   - cd build

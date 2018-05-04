@@ -9,8 +9,13 @@ message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_CMAKE_DIR}")
 include(AddLLVM)
 
-include_directories(${LLVM_INCLUDE_DIRS})
+find_package(Clang REQUIRED CONFIG)
+
+include_directories(${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
+message(STATUS "LLVM_DEFINITIONS:   ${LLVM_DEFINITIONS}")
+message(STATUS "LLVM_INCLUDE_DIRS:  ${LLVM_INCLUDE_DIRS}")
+message(STATUS "CLANG_INCLUDE_DIRS: ${CLANG_INCLUDE_DIRS}")
 
 #set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/AllocFreePlugin.exports)
 add_llvm_loadable_module(AllocFreePlugin AllocFreeChecker.cpp PLUGIN_TOOL clang)
