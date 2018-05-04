@@ -413,12 +413,15 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
     if (IsSymDead)
       State = State->remove<AddressMap>(Sym);
   }
-  ExplodedNode *N = C.generateNonFatalErrorNode(State);
-  if (!N)
-    return;
-  // TODO this sometimes points to the next node (for "p = identityFunction(p)")
-  for (LeakInfo Leaked : LeakInfos) {
-    reportLeak(Leaked.first, C, false, N, Leaked.second);
+
+  if (!LeakInfos.empty()) {
+    ExplodedNode *N = C.generateNonFatalErrorNode(State);
+    if (!N)
+      return;
+    // TODO this sometimes points to the next node (for "p = identityFunction(p)")
+    for (LeakInfo Leaked : LeakInfos) {
+      reportLeak(Leaked.first, C, false, N, Leaked.second);
+    }
   }
 }
 
