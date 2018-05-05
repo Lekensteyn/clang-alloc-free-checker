@@ -21,6 +21,7 @@ enum AllocationFamily : unsigned {
   AF_None,
   AF_Glib,
   AF_GlibStringVector,
+  AF_GlibArray,
   AF_Wmem,
   AF_WmemStringVector
 };
@@ -86,12 +87,13 @@ public:
 class AllocFreeChecker
     : public Checker<check::PostCall, check::PreCall, check::DeadSymbols,
                      check::PointerEscape> {
-  CallDescription FuncGFree, FuncGMalloc, FuncGMalloc0, FuncGMemdup,
-      FuncGRealloc, FuncGStrdup, FuncGStrdupv, FuncGStrfreev, FuncGStrndup,
-      FuncGStrsplit, FuncWmemAlloc, FuncWmemAlloc0, FuncWmemAsciiStrdown,
-      FuncWmemFree, FuncWmemRealloc, FuncWmemStrconcat, FuncWmemStrdup,
-      FuncWmemStrdupPrintf, FuncWmemStrdupVprintf, FuncWmemStrjoin,
-      FuncWmemStrjoinv, FuncWmemStrndup, FuncWmemStrsplit;
+  CallDescription FuncGArrayFree, FuncGArrayNew, FuncGArraySizedNew, FuncGFree,
+      FuncGMalloc, FuncGMalloc0, FuncGMemdup, FuncGRealloc, FuncGStrdup,
+      FuncGStrdupv, FuncGStrfreev, FuncGStrndup, FuncGStrsplit, FuncWmemAlloc,
+      FuncWmemAlloc0, FuncWmemAsciiStrdown, FuncWmemFree, FuncWmemRealloc,
+      FuncWmemStrconcat, FuncWmemStrdup, FuncWmemStrdupPrintf,
+      FuncWmemStrdupVprintf, FuncWmemStrjoin, FuncWmemStrjoinv, FuncWmemStrndup,
+      FuncWmemStrsplit;
 
   std::unique_ptr<BugType> AllocDeallocMismatchBugType;
   std::unique_ptr<BugType> DoubleFreeBugType;
@@ -156,7 +158,9 @@ public:
 REGISTER_MAP_WITH_PROGRAMSTATE(AddressMap, SymbolRef, AllocState)
 
 AllocFreeChecker::AllocFreeChecker()
-    : FuncGFree("g_free"), FuncGMalloc("g_malloc"), FuncGMalloc0("g_malloc0"),
+    : FuncGArrayFree("g_array_free"), FuncGArrayNew("g_array_new"),
+      FuncGArraySizedNew("g_array_sized_new"), FuncGFree("g_free"),
+      FuncGMalloc("g_malloc"), FuncGMalloc0("g_malloc0"),
       FuncGMemdup("g_memdup"), FuncGRealloc("g_realloc"),
       FuncGStrdup("g_strdup"), FuncGStrdupv("g_strdupv"),
       FuncGStrfreev("g_strfreev"), FuncGStrndup("g_strndup"),
@@ -217,6 +221,14 @@ AllocationFamily AllocFreeChecker::getAllocFamily(const CallEvent &Call) const {
     return AF_Glib;
   } else if (Call.isCalled(FuncGStrsplit) || Call.isCalled(FuncGStrdupv)) {
     return AF_GlibStringVector;
+  } else if (Call.isCalled(FuncGArrayNew) ||
+             Call.isCalled(FuncGArraySizedNew)) {
+    return AF_GlibArray;
+  } else if (Call.isCalled(FuncGArrayFree)) {
+    // g_array_free(..., FALSE) returns new memory to be freed with g_free
+    if (Call.getNumArgs() == 2 && Call.getArgSVal(1).isZeroConstant()) {
+      return AF_Glib;
+    }
   } else if (Call.isCalled(FuncWmemAlloc) || Call.isCalled(FuncWmemAlloc0) ||
              Call.isCalled(FuncWmemRealloc) || Call.isCalled(FuncWmemStrdup) ||
              Call.isCalled(FuncWmemStrndup) ||
@@ -239,6 +251,8 @@ AllocFreeChecker::getDeallocFamily(const CallEvent &Call) const {
     return AF_Glib;
   } else if (Call.isCalled(FuncGStrfreev)) {
     return AF_GlibStringVector;
+  } else if (Call.isCalled(FuncGArrayFree)) {
+    return AF_GlibArray;
   } else if (Call.isCalled(FuncWmemFree) || Call.isCalled(FuncWmemRealloc)) {
     return AF_Wmem;
   }
@@ -253,6 +267,9 @@ void printExpectedDeallocName(raw_ostream &os, AllocationFamily family,
     break;
   case AF_GlibStringVector:
     os << "g_strfreev";
+    break;
+  case AF_GlibArray:
+    os << "g_array_free";
     break;
   case AF_Wmem:
   case AF_WmemStringVector: // TODO find better API for wmem_strsplit

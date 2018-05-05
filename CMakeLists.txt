@@ -29,8 +29,14 @@ if(LLVM_ENABLE_PLUGINS AND (WIN32 OR CYGWIN))
     )
 endif()
 
+set(tests
+  alloc-free-checker
+  glib-array
+  wmem-alloc
+  wmem-scope
+)
 add_custom_target(check-AllocFreePlugin)
-foreach(_test alloc-free-checker wmem-alloc wmem-scope)
+foreach(_test ${tests})
   add_custom_target(check-${_test}
     COMMAND
         ${LLVM_TOOLS_BINARY_DIR}/clang -cc1 -analyze

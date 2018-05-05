@@ -88,6 +88,7 @@ useful overview of methods that can be used:
 - [CheckerContext](https://clang.llvm.org/doxygen/classclang_1_1ento_1_1CheckerContext.html)
 - [ProgramState](https://clang.llvm.org/doxygen/classclang_1_1ento_1_1ProgramState.html)
 - [Stmt](https://clang.llvm.org/doxygen/classclang_1_1Stmt.html)
+- [SVal](https://clang.llvm.org/doxygen/classclang_1_1ento_1_1SVal.html)
 
 Other potentially helpful links:
 - [\[cfe-dev\] Checking if a ParmVarDecl is null in a Checker](https://lists.llvm.org/pipermail/cfe-dev/2018-April/057757.html)
