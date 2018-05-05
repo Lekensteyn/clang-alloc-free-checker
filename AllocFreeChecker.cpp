@@ -437,7 +437,8 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
     ExplodedNode *N = C.generateNonFatalErrorNode(State);
     if (!N)
       return;
-    // TODO this sometimes points to the next node (for "p = identityFunction(p)")
+    // TODO this sometimes points to the next node (for "p =
+    // identityFunction(p)")
     for (LeakInfo Leaked : LeakInfos) {
       reportLeak(Leaked.first, C, false, N, Leaked.second);
     }

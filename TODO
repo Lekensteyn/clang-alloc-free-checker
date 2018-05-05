@@ -44,3 +44,40 @@ Test case: ui/tap-rtp-common.c
 From docs/analyzer/IPA.txt we learn that:
 - LocationContext roughly represents the state of a new function call (including
   stack frame).
+
+identity function (incomplete list)
+g_strchomp
+g_strstrip
+g_strdelimit
+
+false positive, not a memleak:
+
+    T = tvb_new_real_data(P, ...);
+    tvb_set_free_cb(T, g_free)
+
+TODO handle allocations from these types (U = Unused in Wireshark)
+https://developer.gnome.org/glib/stable/glib-Doubly-Linked-Lists.html
+https://developer.gnome.org/glib/stable/glib-Singly-Linked-Lists.html
+https://developer.gnome.org/glib/stable/glib-Double-ended-Queues.html
+https://developer.gnome.org/glib/stable/glib-Sequences.html (U)
+https://developer.gnome.org/glib/stable/glib-Hash-Tables.html
+https://developer.gnome.org/glib/stable/glib-Strings.html
+https://developer.gnome.org/glib/stable/glib-String-Chunks.html
+https://developer.gnome.org/glib/stable/glib-Pointer-Arrays.html
+https://developer.gnome.org/glib/stable/glib-Byte-Arrays.html
+https://developer.gnome.org/glib/stable/glib-Balanced-Binary-Trees.html
+https://developer.gnome.org/glib/stable/glib-N-ary-Trees.html
+https://developer.gnome.org/glib/stable/glib-Datasets.html (U)
+https://developer.gnome.org/glib/stable/glib-GVariantType.html (U)
+https://developer.gnome.org/glib/stable/glib-GVariant.html (U)
+
+TODO utility functions (U = Unused in Wireshark)
+g_strnfill (U)
+g_str_to_ascii (U, since 2.40, transfer semantics unclear)
+g_str_tokenize_and_fold (U, since 2.40, free function unclear)
+g_strdup_printf
+g_strdup_vprintf
+g_strsplit_set
+g_strconcat
+g_strjoin
+g_strjoinv
