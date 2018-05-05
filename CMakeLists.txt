@@ -32,6 +32,7 @@ endif()
 set(tests
   alloc-free-checker
   glib-array
+  glib-byte-array
   glib-ptr-array
   wmem-alloc
   wmem-scope

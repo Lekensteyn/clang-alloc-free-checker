@@ -23,6 +23,7 @@ enum AllocationFamily : unsigned {
   AF_GlibStringVector,
   AF_GlibArray,
   AF_GlibPtrArray,
+  AF_GlibByteArray,
   AF_Wmem,
   AF_WmemStringVector
 };
@@ -88,12 +89,13 @@ public:
 class AllocFreeChecker
     : public Checker<check::PostCall, check::PreCall, check::DeadSymbols,
                      check::PointerEscape> {
-  CallDescription FuncGArrayFree, FuncGArrayNew, FuncGArraySizedNew, FuncGFree,
-      FuncGMalloc, FuncGMalloc0, FuncGMemdup, FuncGPtrArrayNew,
-      FuncGPtrArraySizedNew, FuncGPtrArrayNewWithFreeFunc, FuncGPtrArrayNewFull,
-      FuncGPtrArrayFree, FuncGRealloc, FuncGStrconcat, FuncGStrdup,
-      FuncGStrdupPrintf, FuncGStrdupVprintf, FuncGStrdupv, FuncGStrfreev,
-      FuncGStrjoin, FuncGStrjoinv, FuncGStrndup, FuncGStrsplit,
+  CallDescription FuncGArrayFree, FuncGArrayNew, FuncGArraySizedNew,
+      FuncGByteArrayNew, FuncGByteArrayNewTake, FuncGByteArraySizedNew,
+      FuncGByteArrayFree, FuncGFree, FuncGMalloc, FuncGMalloc0, FuncGMemdup,
+      FuncGPtrArrayNew, FuncGPtrArraySizedNew, FuncGPtrArrayNewWithFreeFunc,
+      FuncGPtrArrayNewFull, FuncGPtrArrayFree, FuncGRealloc, FuncGStrconcat,
+      FuncGStrdup, FuncGStrdupPrintf, FuncGStrdupVprintf, FuncGStrdupv,
+      FuncGStrfreev, FuncGStrjoin, FuncGStrjoinv, FuncGStrndup, FuncGStrsplit,
       FuncGStrsplitSet, FuncWmemAlloc, FuncWmemAlloc0, FuncWmemAsciiStrdown,
       FuncWmemFree, FuncWmemRealloc, FuncWmemStrconcat, FuncWmemStrdup,
       FuncWmemStrdupPrintf, FuncWmemStrdupVprintf, FuncWmemStrjoin,
@@ -163,7 +165,11 @@ REGISTER_MAP_WITH_PROGRAMSTATE(AddressMap, SymbolRef, AllocState)
 
 AllocFreeChecker::AllocFreeChecker()
     : FuncGArrayFree("g_array_free"), FuncGArrayNew("g_array_new"),
-      FuncGArraySizedNew("g_array_sized_new"), FuncGFree("g_free"),
+      FuncGArraySizedNew("g_array_sized_new"),
+      FuncGByteArrayNew("g_byte_array_new"),
+      FuncGByteArrayNewTake("g_byte_array_new_take"),
+      FuncGByteArraySizedNew("g_byte_array_sized_new"),
+      FuncGByteArrayFree("g_byte_array_free"), FuncGFree("g_free"),
       FuncGMalloc("g_malloc"), FuncGMalloc0("g_malloc0"),
       FuncGMemdup("g_memdup"), FuncGPtrArrayNew("g_ptr_array_new"),
       FuncGPtrArraySizedNew("g_ptr_array_sized_new"),
@@ -244,7 +250,12 @@ AllocationFamily AllocFreeChecker::getAllocFamily(const CallEvent &Call) const {
              Call.isCalled(FuncGPtrArrayNewWithFreeFunc) ||
              Call.isCalled(FuncGPtrArraySizedNew)) {
     return AF_GlibPtrArray;
+  } else if (Call.isCalled(FuncGByteArrayNew) ||
+             Call.isCalled(FuncGByteArrayNewTake) ||
+             Call.isCalled(FuncGByteArraySizedNew)) {
+    return AF_GlibByteArray;
   } else if (Call.isCalled(FuncGArrayFree) ||
+             Call.isCalled(FuncGByteArrayFree) ||
              Call.isCalled(FuncGPtrArrayFree)) {
     // g_array_free(..., FALSE) returns new memory to be freed with g_free
     if (Call.getNumArgs() == 2 && Call.getArgSVal(1).isZeroConstant()) {
@@ -276,6 +287,8 @@ AllocFreeChecker::getDeallocFamily(const CallEvent &Call) const {
     return AF_GlibArray;
   } else if (Call.isCalled(FuncGPtrArrayFree)) {
     return AF_GlibPtrArray;
+  } else if (Call.isCalled(FuncGByteArrayFree)) {
+    return AF_GlibByteArray;
   } else if (Call.isCalled(FuncWmemFree) || Call.isCalled(FuncWmemRealloc)) {
     return AF_Wmem;
   }
@@ -296,6 +309,9 @@ void printExpectedDeallocName(raw_ostream &os, AllocationFamily family,
     break;
   case AF_GlibPtrArray:
     os << "g_ptr_array_free";
+    break;
+  case AF_GlibByteArray:
+    os << "g_byte_array_free";
     break;
   case AF_Wmem:
   case AF_WmemStringVector: // TODO find better API for wmem_strsplit

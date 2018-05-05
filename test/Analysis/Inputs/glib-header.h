@@ -12,6 +12,7 @@ typedef signed long gssize;
 typedef char gchar;
 typedef int gint;
 typedef unsigned int guint;
+typedef unsigned char guint8;
 typedef gint gboolean;
 #define FALSE (0)
 #define TRUE (!FALSE)
@@ -58,3 +59,12 @@ GPtrArray *g_ptr_array_new_full(guint reserved_size,
                                 GDestroyNotify element_free_func);
 /* TODO g_ptr_array_ref / g_ptr_array_unref? Unused in Wireshark. */
 gpointer *g_ptr_array_free(GPtrArray *array, gboolean free_seg);
+
+/* Byte Arrays */
+typedef struct GByteArray GByteArray;
+GByteArray *g_byte_array_new(void);
+GByteArray *g_byte_array_new_take(guint8 *data, gsize len);
+GByteArray *g_byte_array_sized_new(guint reserved_size);
+/* TODO g_byte_array_ref / g_byte_array_unref? Unused in Wireshark. */
+guint8 *g_byte_array_free(GByteArray *array, gboolean free_segment);
+/* TODO g_byte_array_free_to_bytes and GBytes? Unused in Wireshark. */
