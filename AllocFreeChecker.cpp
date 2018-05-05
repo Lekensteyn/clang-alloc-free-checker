@@ -185,7 +185,7 @@ AllocFreeChecker::AllocFreeChecker()
   LeakBugType->setSuppressOnSink(true);
 }
 
-WmemAllocator getWmemAllocator(const CallEvent &Call, CheckerContext &C) {
+WmemAllocator getWmemAllocator(const CallEvent &Call) {
   const Expr *ArgE = Call.getArgExpr(0);
   if (!ArgE)
     return WA_Invalid;
@@ -339,7 +339,7 @@ void AllocFreeChecker::checkPostCall(const CallEvent &Call,
       return;
 
     WmemAllocator WA =
-        isWmemAllocationFamily(family) ? getWmemAllocator(Call, C) : WA_Invalid;
+        isWmemAllocationFamily(family) ? getWmemAllocator(Call) : WA_Invalid;
 
     // Generate the next transition (an edge in the exploded graph).
     ProgramStateRef State = C.getState();
@@ -365,7 +365,7 @@ void AllocFreeChecker::checkPreCall(const CallEvent &Call,
       return;
 
     WmemAllocator WA =
-        isWmemAllocationFamily(family) ? getWmemAllocator(Call, C) : WA_Invalid;
+        isWmemAllocationFamily(family) ? getWmemAllocator(Call) : WA_Invalid;
 
     // Check if the pointer was indeed allocated.
     ProgramStateRef State = C.getState();
@@ -554,7 +554,7 @@ std::shared_ptr<PathDiagnosticPiece>
 AllocFreeChecker::MallocBugVisitor::VisitNode(const ExplodedNode *N,
                                               const ExplodedNode *PrevN,
                                               BugReporterContext &BRC,
-                                              BugReport &BR) {
+                                              BugReport & /* BR */) {
   ProgramStateRef state = N->getState();
   ProgramStateRef statePrev = PrevN->getState();
 
