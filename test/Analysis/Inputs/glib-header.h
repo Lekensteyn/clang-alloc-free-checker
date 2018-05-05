@@ -15,6 +15,7 @@ typedef unsigned int guint;
 typedef gint gboolean;
 #define FALSE (0)
 #define TRUE (!FALSE)
+typedef void (*GDestroyNotify)(gpointer data);
 
 gpointer g_malloc(gsize n_bytes);
 gpointer g_malloc0(gsize n_bytes);
@@ -47,3 +48,13 @@ GArray *g_array_sized_new(gboolean zero_terminated, gboolean clear_,
                           guint element_size, guint reserved_size);
 /* TODO g_array_ref / g_array_unref for? Unused in Wireshark. */
 gchar *g_array_free(GArray *array, gboolean free_segment);
+
+/* Pointer Arrays */
+typedef struct GPtrArray GPtrArray;
+GPtrArray *g_ptr_array_new(void);
+GPtrArray *g_ptr_array_sized_new(guint reserved_size);
+GPtrArray *g_ptr_array_new_with_free_func(GDestroyNotify element_free_func);
+GPtrArray *g_ptr_array_new_full(guint reserved_size,
+                                GDestroyNotify element_free_func);
+/* TODO g_ptr_array_ref / g_ptr_array_unref? Unused in Wireshark. */
+gpointer *g_ptr_array_free(GPtrArray *array, gboolean free_seg);

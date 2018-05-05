@@ -22,6 +22,7 @@ enum AllocationFamily : unsigned {
   AF_Glib,
   AF_GlibStringVector,
   AF_GlibArray,
+  AF_GlibPtrArray,
   AF_Wmem,
   AF_WmemStringVector
 };
@@ -88,9 +89,11 @@ class AllocFreeChecker
     : public Checker<check::PostCall, check::PreCall, check::DeadSymbols,
                      check::PointerEscape> {
   CallDescription FuncGArrayFree, FuncGArrayNew, FuncGArraySizedNew, FuncGFree,
-      FuncGMalloc, FuncGMalloc0, FuncGMemdup, FuncGRealloc, FuncGStrconcat,
-      FuncGStrdup, FuncGStrdupPrintf, FuncGStrdupVprintf, FuncGStrdupv,
-      FuncGStrfreev, FuncGStrjoin, FuncGStrjoinv, FuncGStrndup, FuncGStrsplit,
+      FuncGMalloc, FuncGMalloc0, FuncGMemdup, FuncGPtrArrayNew,
+      FuncGPtrArraySizedNew, FuncGPtrArrayNewWithFreeFunc, FuncGPtrArrayNewFull,
+      FuncGPtrArrayFree, FuncGRealloc, FuncGStrconcat, FuncGStrdup,
+      FuncGStrdupPrintf, FuncGStrdupVprintf, FuncGStrdupv, FuncGStrfreev,
+      FuncGStrjoin, FuncGStrjoinv, FuncGStrndup, FuncGStrsplit,
       FuncGStrsplitSet, FuncWmemAlloc, FuncWmemAlloc0, FuncWmemAsciiStrdown,
       FuncWmemFree, FuncWmemRealloc, FuncWmemStrconcat, FuncWmemStrdup,
       FuncWmemStrdupPrintf, FuncWmemStrdupVprintf, FuncWmemStrjoin,
@@ -162,7 +165,11 @@ AllocFreeChecker::AllocFreeChecker()
     : FuncGArrayFree("g_array_free"), FuncGArrayNew("g_array_new"),
       FuncGArraySizedNew("g_array_sized_new"), FuncGFree("g_free"),
       FuncGMalloc("g_malloc"), FuncGMalloc0("g_malloc0"),
-      FuncGMemdup("g_memdup"), FuncGRealloc("g_realloc"),
+      FuncGMemdup("g_memdup"), FuncGPtrArrayNew("g_ptr_array_new"),
+      FuncGPtrArraySizedNew("g_ptr_array_sized_new"),
+      FuncGPtrArrayNewWithFreeFunc("g_ptr_array_new_with_free_func"),
+      FuncGPtrArrayNewFull("g_ptr_array_new_full"),
+      FuncGPtrArrayFree("g_ptr_array_free"), FuncGRealloc("g_realloc"),
       FuncGStrconcat("g_strconcat"), FuncGStrdup("g_strdup"),
       FuncGStrdupPrintf("g_strdup_printf"),
       FuncGStrdupVprintf("g_strdup_vprintf"), FuncGStrdupv("g_strdupv"),
@@ -232,7 +239,13 @@ AllocationFamily AllocFreeChecker::getAllocFamily(const CallEvent &Call) const {
   } else if (Call.isCalled(FuncGArrayNew) ||
              Call.isCalled(FuncGArraySizedNew)) {
     return AF_GlibArray;
-  } else if (Call.isCalled(FuncGArrayFree)) {
+  } else if (Call.isCalled(FuncGPtrArrayNew) ||
+             Call.isCalled(FuncGPtrArrayNewFull) ||
+             Call.isCalled(FuncGPtrArrayNewWithFreeFunc) ||
+             Call.isCalled(FuncGPtrArraySizedNew)) {
+    return AF_GlibPtrArray;
+  } else if (Call.isCalled(FuncGArrayFree) ||
+             Call.isCalled(FuncGPtrArrayFree)) {
     // g_array_free(..., FALSE) returns new memory to be freed with g_free
     if (Call.getNumArgs() == 2 && Call.getArgSVal(1).isZeroConstant()) {
       return AF_Glib;
@@ -261,6 +274,8 @@ AllocFreeChecker::getDeallocFamily(const CallEvent &Call) const {
     return AF_GlibStringVector;
   } else if (Call.isCalled(FuncGArrayFree)) {
     return AF_GlibArray;
+  } else if (Call.isCalled(FuncGPtrArrayFree)) {
+    return AF_GlibPtrArray;
   } else if (Call.isCalled(FuncWmemFree) || Call.isCalled(FuncWmemRealloc)) {
     return AF_Wmem;
   }
@@ -278,6 +293,9 @@ void printExpectedDeallocName(raw_ostream &os, AllocationFamily family,
     break;
   case AF_GlibArray:
     os << "g_array_free";
+    break;
+  case AF_GlibPtrArray:
+    os << "g_ptr_array_free";
     break;
   case AF_Wmem:
   case AF_WmemStringVector: // TODO find better API for wmem_strsplit
@@ -329,7 +347,7 @@ const ExplodedNode *getAllocationSite(const ExplodedNode *N, SymbolRef Sym) {
 /// Process alloc
 void AllocFreeChecker::checkPostCall(const CallEvent &Call,
                                      CheckerContext &C) const {
-  if (!Call.isGlobalCFunction() || Call.getNumArgs() == 0)
+  if (!Call.isGlobalCFunction())
     return;
 
   AllocationFamily family = getAllocFamily(Call);
@@ -338,8 +356,10 @@ void AllocFreeChecker::checkPostCall(const CallEvent &Call,
     if (!Address)
       return;
 
-    WmemAllocator WA =
-        isWmemAllocationFamily(family) ? getWmemAllocator(Call) : WA_Invalid;
+    WmemAllocator WA = WA_Invalid;
+    if (isWmemAllocationFamily(family) && Call.getNumArgs() > 0) {
+      WA = getWmemAllocator(Call);
+    }
 
     // Generate the next transition (an edge in the exploded graph).
     ProgramStateRef State = C.getState();
