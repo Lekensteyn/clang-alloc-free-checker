@@ -1,8 +1,5 @@
 #pragma clang system_header
 
-// header is taken from Clang source tree.
-#include "system-header-simulator-for-valist.h"
-
 typedef unsigned long size_t;
 
 /* wmem_core.h */

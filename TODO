@@ -75,9 +75,3 @@ TODO utility functions (U = Unused in Wireshark)
 g_strnfill (U)
 g_str_to_ascii (U, since 2.40, transfer semantics unclear)
 g_str_tokenize_and_fold (U, since 2.40, free function unclear)
-g_strdup_printf
-g_strdup_vprintf
-g_strsplit_set
-g_strconcat
-g_strjoin
-g_strjoinv

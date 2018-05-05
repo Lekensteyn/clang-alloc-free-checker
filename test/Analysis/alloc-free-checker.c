@@ -100,3 +100,31 @@ void checkMemleakReportOnce(int flag) {
   }
   p[0] = 2;
 } // expected-warning {{Memory leak}}
+
+void checkMemleakGStrdupPrintf() {
+  char *p = g_strdup_printf("");
+} // expected-warning {{Memory leak}}
+
+void checkMemleakGStrdupVprintf(va_list args) {
+  char *p = g_strdup_vprintf("", args);
+} // expected-warning {{Memory leak}}
+
+void checkMemleakGStrsplit() {
+  char **p = g_strsplit("", "", -1);
+} // expected-warning {{Memory leak}}
+
+void checkMemleakGStrsplitSet() {
+  char **p = g_strsplit_set("", "", -1);
+} // expected-warning {{Memory leak}}
+
+void checkMemleakGStrconcat() {
+  char *p = g_strconcat("a", "b");
+} // expected-warning {{Memory leak}}
+
+void checkMemleakGStrjoin() {
+  char *p = g_strjoin(",", "a", "b");
+} // expected-warning {{Memory leak}}
+
+void checkMemleakGStrjoinv(gchar **str_array) {
+  char *p = g_strjoinv(", ", str_array);
+} // expected-warning {{Memory leak}}

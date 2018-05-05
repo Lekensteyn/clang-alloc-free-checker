@@ -88,12 +88,13 @@ class AllocFreeChecker
     : public Checker<check::PostCall, check::PreCall, check::DeadSymbols,
                      check::PointerEscape> {
   CallDescription FuncGArrayFree, FuncGArrayNew, FuncGArraySizedNew, FuncGFree,
-      FuncGMalloc, FuncGMalloc0, FuncGMemdup, FuncGRealloc, FuncGStrdup,
-      FuncGStrdupv, FuncGStrfreev, FuncGStrndup, FuncGStrsplit, FuncWmemAlloc,
-      FuncWmemAlloc0, FuncWmemAsciiStrdown, FuncWmemFree, FuncWmemRealloc,
-      FuncWmemStrconcat, FuncWmemStrdup, FuncWmemStrdupPrintf,
-      FuncWmemStrdupVprintf, FuncWmemStrjoin, FuncWmemStrjoinv, FuncWmemStrndup,
-      FuncWmemStrsplit;
+      FuncGMalloc, FuncGMalloc0, FuncGMemdup, FuncGRealloc, FuncGStrconcat,
+      FuncGStrdup, FuncGStrdupPrintf, FuncGStrdupVprintf, FuncGStrdupv,
+      FuncGStrfreev, FuncGStrjoin, FuncGStrjoinv, FuncGStrndup, FuncGStrsplit,
+      FuncGStrsplitSet, FuncWmemAlloc, FuncWmemAlloc0, FuncWmemAsciiStrdown,
+      FuncWmemFree, FuncWmemRealloc, FuncWmemStrconcat, FuncWmemStrdup,
+      FuncWmemStrdupPrintf, FuncWmemStrdupVprintf, FuncWmemStrjoin,
+      FuncWmemStrjoinv, FuncWmemStrndup, FuncWmemStrsplit;
 
   std::unique_ptr<BugType> AllocDeallocMismatchBugType;
   std::unique_ptr<BugType> DoubleFreeBugType;
@@ -162,13 +163,16 @@ AllocFreeChecker::AllocFreeChecker()
       FuncGArraySizedNew("g_array_sized_new"), FuncGFree("g_free"),
       FuncGMalloc("g_malloc"), FuncGMalloc0("g_malloc0"),
       FuncGMemdup("g_memdup"), FuncGRealloc("g_realloc"),
-      FuncGStrdup("g_strdup"), FuncGStrdupv("g_strdupv"),
-      FuncGStrfreev("g_strfreev"), FuncGStrndup("g_strndup"),
-      FuncGStrsplit("g_strsplit"), FuncWmemAlloc("wmem_alloc"),
-      FuncWmemAlloc0("wmem_alloc0"), FuncWmemAsciiStrdown("wmem_ascii_strdown"),
-      FuncWmemFree("wmem_free"), FuncWmemRealloc("wmem_realloc"),
-      FuncWmemStrconcat("wmem_strconcat"), FuncWmemStrdup("wmem_strdup"),
-      FuncWmemStrdupPrintf("wmem_strdup_printf"),
+      FuncGStrconcat("g_strconcat"), FuncGStrdup("g_strdup"),
+      FuncGStrdupPrintf("g_strdup_printf"),
+      FuncGStrdupVprintf("g_strdup_vprintf"), FuncGStrdupv("g_strdupv"),
+      FuncGStrfreev("g_strfreev"), FuncGStrjoin("g_strjoin"),
+      FuncGStrjoinv("g_strjoinv"), FuncGStrndup("g_strndup"),
+      FuncGStrsplit("g_strsplit"), FuncGStrsplitSet("g_strsplit_set"),
+      FuncWmemAlloc("wmem_alloc"), FuncWmemAlloc0("wmem_alloc0"),
+      FuncWmemAsciiStrdown("wmem_ascii_strdown"), FuncWmemFree("wmem_free"),
+      FuncWmemRealloc("wmem_realloc"), FuncWmemStrconcat("wmem_strconcat"),
+      FuncWmemStrdup("wmem_strdup"), FuncWmemStrdupPrintf("wmem_strdup_printf"),
       FuncWmemStrdupVprintf("wmem_strdup_vprintf"),
       FuncWmemStrjoin("wmem_strjoin"), FuncWmemStrjoinv("wmem_strjoinv"),
       FuncWmemStrndup("wmem_strndup"), FuncWmemStrsplit("wmem_strsplit") {
@@ -217,9 +221,13 @@ WmemAllocator getWmemAllocator(const CallEvent &Call, CheckerContext &C) {
 AllocationFamily AllocFreeChecker::getAllocFamily(const CallEvent &Call) const {
   if (Call.isCalled(FuncGMalloc) || Call.isCalled(FuncGMalloc0) ||
       Call.isCalled(FuncGMemdup) || Call.isCalled(FuncGStrdup) ||
-      Call.isCalled(FuncGStrndup) || Call.isCalled(FuncGRealloc)) {
+      Call.isCalled(FuncGStrndup) || Call.isCalled(FuncGRealloc) ||
+      Call.isCalled(FuncGStrdupPrintf) || Call.isCalled(FuncGStrdupVprintf) ||
+      Call.isCalled(FuncGStrconcat) || Call.isCalled(FuncGStrjoin) ||
+      Call.isCalled(FuncGStrjoinv)) {
     return AF_Glib;
-  } else if (Call.isCalled(FuncGStrsplit) || Call.isCalled(FuncGStrdupv)) {
+  } else if (Call.isCalled(FuncGStrdupv) || Call.isCalled(FuncGStrsplit) ||
+             Call.isCalled(FuncGStrsplitSet)) {
     return AF_GlibStringVector;
   } else if (Call.isCalled(FuncGArrayNew) ||
              Call.isCalled(FuncGArraySizedNew)) {
