@@ -79,5 +79,12 @@ GByteArray *g_byte_array_sized_new(guint reserved_size);
 /* TODO g_byte_array_ref / g_byte_array_unref? Unused in Wireshark. */
 GByteArray *g_byte_array_append(GByteArray *array, const guint8 *data,
                                 guint len);
+GByteArray *g_byte_array_prepend(GByteArray *array, const guint8 *data,
+                                 guint len);
+GByteArray *g_byte_array_remove_index(GByteArray *array, guint index_);
+GByteArray *g_byte_array_remove_index_fast(GByteArray *array, guint index_);
+GByteArray *g_byte_array_remove_range(GByteArray *array, guint index_,
+                                      guint length);
+GByteArray *g_byte_array_set_size(GByteArray *array, guint length);
 guint8 *g_byte_array_free(GByteArray *array, gboolean free_segment);
 /* TODO g_byte_array_free_to_bytes and GBytes? Unused in Wireshark. */

@@ -34,3 +34,23 @@ void checkMemLeakGByteArrayFree() {
   GByteArray *array = g_byte_array_new();
   g_byte_array_free(array, FALSE);
 } // expected-warning {{Memory leak}}
+
+void checkGByteArrayAppendFreeMismatch() {
+  GByteArray *array = g_byte_array_append(g_byte_array_new(), NULL, 0);
+  g_free(array); // expected-warning {{Memory is expected to be deallocated by g_byte_array_free}}
+}
+
+void checkGByteArrayAppendFreeSegmentTrue() {
+  GByteArray *array = g_byte_array_append(g_byte_array_new(), NULL, 0);
+  g_byte_array_free(array, TRUE);
+}
+
+void checkGByteArrayIdentityMemLeaks(const guint8 *data, guint len) {
+  GByteArray *array = g_byte_array_append(g_byte_array_new(), NULL, 0);
+  array = g_byte_array_append(array, data, len);
+  array = g_byte_array_prepend(array, data, len);
+  array = g_byte_array_remove_index(array, 0);
+  array = g_byte_array_remove_index_fast(array, 0);
+  array = g_byte_array_remove_range(array, 0, 1);
+  array = g_byte_array_set_size(array, 0);
+} // expected-warning {{Memory leak}}

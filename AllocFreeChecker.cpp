@@ -102,6 +102,9 @@ class AllocFreeChecker
       FuncWmemStrjoinv, FuncWmemStrndup, FuncWmemStrsplit;
   CallDescription FuncGStrcanon, FuncGStrchomp, FuncGStrchug, FuncGStrdelimit,
       FuncGStringAsciiDown, FuncGStringAsciiUp, FuncGStrreverse;
+  CallDescription FuncGByteArrayAppend, FuncGByteArrayPrepend,
+      FuncGByteArrayRemoveIndex, FuncGByteArrayRemoveIndexFast,
+      FuncGByteArrayRemoveRange, FuncGByteArraySetSize;
 
   std::unique_ptr<BugType> AllocDeallocMismatchBugType;
   std::unique_ptr<BugType> DoubleFreeBugType;
@@ -197,7 +200,14 @@ AllocFreeChecker::AllocFreeChecker()
       FuncGStrchug("g_strchug"), FuncGStrdelimit("g_strdelimit"),
       FuncGStringAsciiUp("g_string_ascii_up"),
       FuncGStringAsciiDown("g_string_ascii_down"),
-      FuncGStrreverse("g_strreverse") {
+      FuncGStrreverse("g_strreverse"),
+
+      FuncGByteArrayAppend("g_byte_array_append"),
+      FuncGByteArrayPrepend("g_byte_array_prepend"),
+      FuncGByteArrayRemoveIndex("g_byte_array_remove_index"),
+      FuncGByteArrayRemoveIndexFast("g_byte_array_remove_index_fast"),
+      FuncGByteArrayRemoveRange("g_byte_array_remove_range"),
+      FuncGByteArraySetSize("g_byte_array_set_size") {
   AllocDeallocMismatchBugType.reset(
       new BugType(this, "Alloc-dealloc mismatch", categories::MemoryError));
   DoubleFreeBugType.reset(
@@ -308,9 +318,15 @@ bool AllocFreeChecker::isIdentityFunction(const CallEvent &Call) const {
   if (Call.isCalled(FuncGStrcanon) || Call.isCalled(FuncGStrchomp) ||
       Call.isCalled(FuncGStrchug) || Call.isCalled(FuncGStrdelimit) ||
       Call.isCalled(FuncGStringAsciiUp) ||
-      Call.isCalled(FuncGStringAsciiDown) || Call.isCalled(FuncGStrreverse)) {
+      Call.isCalled(FuncGStringAsciiDown) || Call.isCalled(FuncGStrreverse))
     return true;
-  }
+  if (Call.isCalled(FuncGByteArrayAppend) ||
+      Call.isCalled(FuncGByteArrayPrepend) ||
+      Call.isCalled(FuncGByteArrayRemoveIndex) ||
+      Call.isCalled(FuncGByteArrayRemoveIndexFast) ||
+      Call.isCalled(FuncGByteArrayRemoveRange) ||
+      Call.isCalled(FuncGByteArraySetSize))
+    return true;
   return false;
 }
 
