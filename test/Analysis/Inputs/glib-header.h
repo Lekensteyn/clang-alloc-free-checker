@@ -30,6 +30,12 @@ gchar *g_strndup(const gchar *str, gsize n);
 gchar **g_strdupv(gchar **str_array);
 gchar *g_strdup_printf(const gchar *format, ...);
 gchar *g_strdup_vprintf(const gchar *format, va_list args);
+gchar *g_strreverse(gchar *string);
+gchar *g_strchug(gchar *string);
+gchar *g_strchomp(gchar *string);
+gchar *g_strdelimit(gchar *string, const gchar *delimiters,
+                    gchar new_delimiter);
+gchar *g_strcanon(gchar *string, const gchar *valid_chars, gchar substitutor);
 gchar **g_strsplit(const gchar *string, const gchar *delimiter,
                    gint max_tokens);
 gchar *g_strdelimit(gchar *string, const gchar *delimiters,

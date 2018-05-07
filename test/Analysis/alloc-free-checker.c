@@ -71,13 +71,6 @@ void checkListFreeMismatch4() {
   g_strfreev(p); // expected-warning {{Memory is expected to be deallocated by g_free}}
 }
 
-void checkIdentityFunction() {
-  char *p = g_strdup("");
-  // original "p" should not be marked as leaked because g_strdelimit returns the same "p".
-  p = g_strdelimit(p, "_", '-');
-  g_free(p);
-}
-
 void checkNoMemLeaks() {
   char *p = g_strdup("");
   char *p2 = g_strdup(p);
@@ -128,3 +121,19 @@ void checkMemleakGStrjoin() {
 void checkMemleakGStrjoinv(gchar **str_array) {
   char *p = g_strjoinv(", ", str_array);
 } // expected-warning {{Memory leak}}
+
+void checkIdentityFunctionLeak(int flag) {
+  char *string = g_strdup("food");
+  string = g_strreverse(string);
+  string = g_strchug(string);
+  string = g_strchomp(string);
+  string = g_strdelimit(string, "abc", '?');
+  string = g_strcanon(string, "abc", '?');
+} // expected-warning {{Memory leak}}
+
+void checkIdentityFunctionDoubleFree(int flag) {
+  char *p = g_strdup("food");
+  char *p2 = g_strreverse(p);
+  g_free(p);
+  g_free(p2); // expected-warning {{memory was freed before}}
+}

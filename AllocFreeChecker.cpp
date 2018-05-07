@@ -100,6 +100,8 @@ class AllocFreeChecker
       FuncWmemFree, FuncWmemRealloc, FuncWmemStrconcat, FuncWmemStrdup,
       FuncWmemStrdupPrintf, FuncWmemStrdupVprintf, FuncWmemStrjoin,
       FuncWmemStrjoinv, FuncWmemStrndup, FuncWmemStrsplit;
+  CallDescription FuncGStrcanon, FuncGStrchomp, FuncGStrchug, FuncGStrdelimit,
+      FuncGStrreverse;
 
   std::unique_ptr<BugType> AllocDeallocMismatchBugType;
   std::unique_ptr<BugType> DoubleFreeBugType;
@@ -107,6 +109,7 @@ class AllocFreeChecker
 
   AllocationFamily getAllocFamily(const CallEvent &Call) const;
   AllocationFamily getDeallocFamily(const CallEvent &Call) const;
+  bool isIdentityFunction(const CallEvent &Call) const;
 
   void reportAllocDeallocMismatch(SymbolRef AddressSym, const CallEvent &Call,
                                   CheckerContext &C, AllocationFamily family,
@@ -188,7 +191,11 @@ AllocFreeChecker::AllocFreeChecker()
       FuncWmemStrdup("wmem_strdup"), FuncWmemStrdupPrintf("wmem_strdup_printf"),
       FuncWmemStrdupVprintf("wmem_strdup_vprintf"),
       FuncWmemStrjoin("wmem_strjoin"), FuncWmemStrjoinv("wmem_strjoinv"),
-      FuncWmemStrndup("wmem_strndup"), FuncWmemStrsplit("wmem_strsplit") {
+      FuncWmemStrndup("wmem_strndup"), FuncWmemStrsplit("wmem_strsplit"),
+
+      FuncGStrcanon("g_strcanon"), FuncGStrchomp("g_strchomp"),
+      FuncGStrchug("g_strchug"), FuncGStrdelimit("g_strdelimit"),
+      FuncGStrreverse("g_strreverse") {
   AllocDeallocMismatchBugType.reset(
       new BugType(this, "Alloc-dealloc mismatch", categories::MemoryError));
   DoubleFreeBugType.reset(
@@ -295,6 +302,15 @@ AllocFreeChecker::getDeallocFamily(const CallEvent &Call) const {
   return AF_None;
 }
 
+bool AllocFreeChecker::isIdentityFunction(const CallEvent &Call) const {
+  if (Call.isCalled(FuncGStrcanon) || Call.isCalled(FuncGStrchomp) ||
+      Call.isCalled(FuncGStrchug) || Call.isCalled(FuncGStrdelimit) ||
+      Call.isCalled(FuncGStrreverse)) {
+    return true;
+  }
+  return false;
+}
+
 void printExpectedDeallocName(raw_ostream &os, AllocationFamily family,
                               WmemAllocator wmemAllocator) {
   switch (family) {
@@ -381,6 +397,11 @@ void AllocFreeChecker::checkPostCall(const CallEvent &Call,
     ProgramStateRef State = C.getState();
     State =
         State->set<AddressMap>(Address, AllocState::getAllocated(family, WA));
+    C.addTransition(State);
+  } else if (isIdentityFunction(Call)) {
+    ProgramStateRef State = C.getState();
+    SVal Arg0 = Call.getArgSVal(0);
+    State = State->BindExpr(Call.getOriginExpr(), C.getLocationContext(), Arg0);
     C.addTransition(State);
   }
 }
@@ -481,8 +502,6 @@ void AllocFreeChecker::checkDeadSymbols(SymbolReaper &SymReaper,
     ExplodedNode *N = C.generateNonFatalErrorNode(State);
     if (!N)
       return;
-    // TODO this sometimes points to the next node (for "p =
-    // identityFunction(p)")
     for (LeakInfo Leaked : LeakInfos) {
       reportLeak(Leaked.first, C, false, N, Leaked.second);
     }
@@ -570,7 +589,8 @@ ProgramStateRef AllocFreeChecker::checkPointerEscape(
     ProgramStateRef State, const InvalidatedSymbols &Escaped,
     const CallEvent *Call, PointerEscapeKind Kind) const {
   // If this memory will not be freed, keep the memory in the state.
-  if (Kind == PSK_DirectEscapeOnCall && guaranteedNotToFreeMemory(*Call)) {
+  if (Kind == PSK_DirectEscapeOnCall &&
+      (guaranteedNotToFreeMemory(*Call) || isIdentityFunction(*Call))) {
     return State;
   }
 

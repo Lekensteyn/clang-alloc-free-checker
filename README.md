@@ -93,7 +93,9 @@ useful overview of methods that can be used:
 Other potentially helpful links:
 - [\[cfe-dev\] Checking if a ParmVarDecl is null in a Checker](https://lists.llvm.org/pipermail/cfe-dev/2018-April/057757.html)
 - That thread linked to this [Checker Developer's Guide (PDF)](https://github.com/haoNoQ/clang-analyzer-guide/releases/download/v0.1/clang-analyzer-guide-v0.1.pdf).
+- [StaticAnalyzer/README.txt](https://github.com/llvm-mirror/clang/blob/master/lib/StaticAnalyzer/README.txt) (note: not updated since 2011)
 
 Random hints:
 - The command `clang -cc1 -analyze -analyzer-checker=debug.ViewExplodedGraph`
+  (or equivalently, `clang -cc1 -analyze -analyzer-viz-egraph-graphviz`)
   requires Clang to be built in debug mode or nothing appears to happen.

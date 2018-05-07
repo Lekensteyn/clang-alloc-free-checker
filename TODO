@@ -16,27 +16,8 @@ TODO mark malloc/free nodes on path. See MallocChecker.cpp for example.
 It probably needs implementation of a BugReporterVisitor (VisitNode) and a
 corresponding R->addVisitor(llvm::make_unique<...BugVisitor>(Sym));
 
-TODO handle identity functions that invalidate other symbols. Can I mark a
-symbol as being equivalent to another such that it is not marked as escaped
-pointer?
-void AllocFreeChecker::checkPostCall(const CallEvent &Call,
-                                     CheckerContext &C) const {
-  // ...
-  if (Call.isGlobalCFunction("g_strdelimit")) {
-    // Assume identity function "p = g_strdelimit(p, ...)" where the return
-    // value is equivalent to the argument.
-    // TODO this somehow still results in a leaked symbol?
-    SValBuilder &svalBuilder = C.getSValBuilder();
-    ProgramStateRef State = C.getState();
-    SVal Arg0 = Call.getArgSVal(0);
-    SVal RetVal = Call.getReturnValue();
-    DefinedOrUnknownSVal arg0 = Arg0.castAs<DefinedOrUnknownSVal>();
-    DefinedOrUnknownSVal retVal = RetVal.castAs<DefinedOrUnknownSVal>();
-    DefinedOrUnknownSVal PtrEQ = svalBuilder.evalEQ(State, arg0, retVal);
-    State = State->assume(PtrEQ, true);
-    C.addTransition(State);
-    C.getSymbolManager().addSymbolDependency(Arg0.getAsSymbol(), RetVal.getAsSymbol());
-  }
+DONE
+TODO handle identity functions that invalidate other symbols.
 
 DONE
 TODO fold multiple memleaks based on the allocation, not on the exit path.
@@ -44,11 +25,6 @@ Test case: ui/tap-rtp-common.c
 From docs/analyzer/IPA.txt we learn that:
 - LocationContext roughly represents the state of a new function call (including
   stack frame).
-
-identity function (incomplete list)
-g_strchomp
-g_strstrip
-g_strdelimit
 
 false positive, not a memleak:
 
@@ -73,3 +49,26 @@ TODO utility functions (U = Unused in Wireshark)
 g_strnfill (U)
 g_str_to_ascii (U, since 2.40, transfer semantics unclear)
 g_str_tokenize_and_fold (U, since 2.40, free function unclear)
+g_strescape (allocates new memory, but free function is not clear)
+g_strcompress (U, allocates new memory, but free function is not clear)
+
+TODO handle functions that return an address from a region:
+g_stpcpy
+g_strstr_len
+g_strrstr
+g_strrstr_len
+
+TODO handle identity functions:
+g_string_ascii_up (U)
+g_string_ascii_down
+g_ascii_dtostr (U)
+g_ascii_formatd (U)
+
+
+TODO these for sure do not escape, the first argument is not freed:
+g_strlcpy
+g_strlcat
+
+TODO check that arguments to g_printf, etc. do not cause a pointer to escape
+TODO g_ascii_strtoll, etc. return a value from the region in an argument
+    (instead of returning as function return value)
