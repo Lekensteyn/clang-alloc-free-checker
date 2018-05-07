@@ -101,7 +101,7 @@ class AllocFreeChecker
       FuncWmemStrdupPrintf, FuncWmemStrdupVprintf, FuncWmemStrjoin,
       FuncWmemStrjoinv, FuncWmemStrndup, FuncWmemStrsplit;
   CallDescription FuncGStrcanon, FuncGStrchomp, FuncGStrchug, FuncGStrdelimit,
-      FuncGStrreverse;
+      FuncGStringAsciiDown, FuncGStringAsciiUp, FuncGStrreverse;
 
   std::unique_ptr<BugType> AllocDeallocMismatchBugType;
   std::unique_ptr<BugType> DoubleFreeBugType;
@@ -195,6 +195,8 @@ AllocFreeChecker::AllocFreeChecker()
 
       FuncGStrcanon("g_strcanon"), FuncGStrchomp("g_strchomp"),
       FuncGStrchug("g_strchug"), FuncGStrdelimit("g_strdelimit"),
+      FuncGStringAsciiUp("g_string_ascii_up"),
+      FuncGStringAsciiDown("g_string_ascii_down"),
       FuncGStrreverse("g_strreverse") {
   AllocDeallocMismatchBugType.reset(
       new BugType(this, "Alloc-dealloc mismatch", categories::MemoryError));
@@ -305,7 +307,8 @@ AllocFreeChecker::getDeallocFamily(const CallEvent &Call) const {
 bool AllocFreeChecker::isIdentityFunction(const CallEvent &Call) const {
   if (Call.isCalled(FuncGStrcanon) || Call.isCalled(FuncGStrchomp) ||
       Call.isCalled(FuncGStrchug) || Call.isCalled(FuncGStrdelimit) ||
-      Call.isCalled(FuncGStrreverse)) {
+      Call.isCalled(FuncGStringAsciiUp) ||
+      Call.isCalled(FuncGStringAsciiDown) || Call.isCalled(FuncGStrreverse)) {
     return true;
   }
   return false;

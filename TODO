@@ -59,8 +59,6 @@ g_strrstr
 g_strrstr_len
 
 TODO handle identity functions:
-g_string_ascii_up (U)
-g_string_ascii_down
 g_ascii_dtostr (U)
 g_ascii_formatd (U)
 

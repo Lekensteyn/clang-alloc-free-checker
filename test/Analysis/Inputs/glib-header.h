@@ -24,12 +24,17 @@ gpointer g_realloc(gpointer mem, gsize n_bytes);
 void g_free(gpointer mem);
 gpointer g_memdup(gconstpointer mem, guint byte_size);
 
+/* Strings */
+typedef struct GString GString;
+
 /* String Utility Functions */
 gpointer g_strdup(const gchar *str);
 gchar *g_strndup(const gchar *str, gsize n);
 gchar **g_strdupv(gchar **str_array);
 gchar *g_strdup_printf(const gchar *format, ...);
 gchar *g_strdup_vprintf(const gchar *format, va_list args);
+GString *g_string_ascii_up(GString *string);
+GString *g_string_ascii_down(GString *string);
 gchar *g_strreverse(gchar *string);
 gchar *g_strchug(gchar *string);
 gchar *g_strchomp(gchar *string);
@@ -72,5 +77,7 @@ GByteArray *g_byte_array_new(void);
 GByteArray *g_byte_array_new_take(guint8 *data, gsize len);
 GByteArray *g_byte_array_sized_new(guint reserved_size);
 /* TODO g_byte_array_ref / g_byte_array_unref? Unused in Wireshark. */
+GByteArray *g_byte_array_append(GByteArray *array, const guint8 *data,
+                                guint len);
 guint8 *g_byte_array_free(GByteArray *array, gboolean free_segment);
 /* TODO g_byte_array_free_to_bytes and GBytes? Unused in Wireshark. */

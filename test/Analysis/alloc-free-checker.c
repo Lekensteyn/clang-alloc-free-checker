@@ -137,3 +137,11 @@ void checkIdentityFunctionDoubleFree(int flag) {
   g_free(p);
   g_free(p2); // expected-warning {{memory was freed before}}
 }
+
+void checkGStringDoubleFree(GString *string) {
+  GString *p1 = g_string_ascii_up(string);
+  GString *p2 = g_string_ascii_down(string);
+  // TODO use g_string_free
+  g_free(p1);
+  g_free(p2); // expected-warning {{memory was freed before}}
+}
