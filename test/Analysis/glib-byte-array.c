@@ -54,3 +54,9 @@ void checkGByteArrayIdentityMemLeaks(const guint8 *data, guint len) {
   array = g_byte_array_remove_range(array, 0, 1);
   array = g_byte_array_set_size(array, 0);
 } // expected-warning {{Memory leak}}
+
+void checkGByteArraySortLeaks(GCompareFunc compare_func, GCompareDataFunc cdf) {
+  GByteArray *array = g_byte_array_new();
+  g_byte_array_sort(array, compare_func);
+  g_byte_array_sort_with_data(array, cdf, NULL);
+} // expected-warning {{Memory leak}}

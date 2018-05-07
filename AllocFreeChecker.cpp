@@ -104,7 +104,8 @@ class AllocFreeChecker
       FuncGStringAsciiDown, FuncGStringAsciiUp, FuncGStrreverse;
   CallDescription FuncGByteArrayAppend, FuncGByteArrayPrepend,
       FuncGByteArrayRemoveIndex, FuncGByteArrayRemoveIndexFast,
-      FuncGByteArrayRemoveRange, FuncGByteArraySetSize;
+      FuncGByteArrayRemoveRange, FuncGByteArraySetSize, FuncGByteArraySort,
+      FuncGByteArraySortWithData;
 
   std::unique_ptr<BugType> AllocDeallocMismatchBugType;
   std::unique_ptr<BugType> DoubleFreeBugType;
@@ -112,6 +113,7 @@ class AllocFreeChecker
 
   AllocationFamily getAllocFamily(const CallEvent &Call) const;
   AllocationFamily getDeallocFamily(const CallEvent &Call) const;
+  bool guaranteedNotToFreeMemory(const CallEvent &Call) const;
   bool isIdentityFunction(const CallEvent &Call) const;
 
   void reportAllocDeallocMismatch(SymbolRef AddressSym, const CallEvent &Call,
@@ -207,7 +209,9 @@ AllocFreeChecker::AllocFreeChecker()
       FuncGByteArrayRemoveIndex("g_byte_array_remove_index"),
       FuncGByteArrayRemoveIndexFast("g_byte_array_remove_index_fast"),
       FuncGByteArrayRemoveRange("g_byte_array_remove_range"),
-      FuncGByteArraySetSize("g_byte_array_set_size") {
+      FuncGByteArraySetSize("g_byte_array_set_size"),
+      FuncGByteArraySort("g_byte_array_sort"),
+      FuncGByteArraySortWithData("g_byte_array_sort_with_data") {
   AllocDeallocMismatchBugType.reset(
       new BugType(this, "Alloc-dealloc mismatch", categories::MemoryError));
   DoubleFreeBugType.reset(
@@ -314,6 +318,19 @@ AllocFreeChecker::getDeallocFamily(const CallEvent &Call) const {
   return AF_None;
 }
 
+bool AllocFreeChecker::guaranteedNotToFreeMemory(const CallEvent &Call) const {
+  // Assume that GLib functions (g_*) and wmem functions (wmem_*) do not release
+  // or change the address (that will be handled in PostCall).
+  if (Call.isCalled(FuncGFree) || Call.isCalled(FuncGRealloc) ||
+      Call.isCalled(FuncWmemFree) || Call.isCalled(FuncWmemRealloc))
+    return true;
+  if (Call.isCalled(FuncGByteArraySort) ||
+      Call.isCalled(FuncGByteArraySortWithData))
+    return true;
+  return false;
+}
+
+// Returns true iff its first argument is equal to the return value.
 bool AllocFreeChecker::isIdentityFunction(const CallEvent &Call) const {
   if (Call.isCalled(FuncGStrcanon) || Call.isCalled(FuncGStrchomp) ||
       Call.isCalled(FuncGStrchug) || Call.isCalled(FuncGStrdelimit) ||
@@ -589,17 +606,6 @@ void AllocFreeChecker::reportLeak(SymbolRef AddressSym, CheckerContext &C,
   R->markInteresting(AddressSym);
   R->addVisitor(llvm::make_unique<MallocBugVisitor>(AddressSym));
   C.emitReport(std::move(R));
-}
-
-bool guaranteedNotToFreeMemory(const CallEvent &Call) {
-  const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
-  if (!FD)
-    return false;
-  StringRef FName = FD->getName();
-  // Assume that GLib functions (g_*) and wmem functions (wmem_*) do not release
-  // or change the address (that will be handled in PostCall).
-  return FName.startswith("g_free") || FName.startswith("g_realloc") ||
-         FName.startswith("wmem_free") || FName.startswith("wmem_realloc");
 }
 
 // If the pointer we are tracking escaped, do not track the symbol as

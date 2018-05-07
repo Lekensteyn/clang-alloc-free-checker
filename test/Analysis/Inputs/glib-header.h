@@ -17,6 +17,8 @@ typedef gint gboolean;
 #define FALSE (0)
 #define TRUE (!FALSE)
 typedef void (*GDestroyNotify)(gpointer data);
+typedef gint (*GCompareFunc)(gconstpointer, gconstpointer);
+typedef gint (*GCompareDataFunc)(gconstpointer, gconstpointer, gpointer);
 
 gpointer g_malloc(gsize n_bytes);
 gpointer g_malloc0(gsize n_bytes);
@@ -86,5 +88,9 @@ GByteArray *g_byte_array_remove_index_fast(GByteArray *array, guint index_);
 GByteArray *g_byte_array_remove_range(GByteArray *array, guint index_,
                                       guint length);
 GByteArray *g_byte_array_set_size(GByteArray *array, guint length);
+void g_byte_array_sort(GByteArray *array, GCompareFunc compare_func);
+void g_byte_array_sort_with_data(GByteArray *array,
+                                 GCompareDataFunc compare_func,
+                                 gpointer user_data);
 guint8 *g_byte_array_free(GByteArray *array, gboolean free_segment);
 /* TODO g_byte_array_free_to_bytes and GBytes? Unused in Wireshark. */
