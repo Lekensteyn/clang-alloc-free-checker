@@ -106,6 +106,7 @@ class AllocFreeChecker
       FuncGByteArrayRemoveIndex, FuncGByteArrayRemoveIndexFast,
       FuncGByteArrayRemoveRange, FuncGByteArraySetSize, FuncGByteArraySort,
       FuncGByteArraySortWithData;
+  CallDescription FuncTvbNewRealData;
 
   std::unique_ptr<BugType> AllocDeallocMismatchBugType;
   std::unique_ptr<BugType> DoubleFreeBugType;
@@ -211,7 +212,9 @@ AllocFreeChecker::AllocFreeChecker()
       FuncGByteArrayRemoveRange("g_byte_array_remove_range"),
       FuncGByteArraySetSize("g_byte_array_set_size"),
       FuncGByteArraySort("g_byte_array_sort"),
-      FuncGByteArraySortWithData("g_byte_array_sort_with_data") {
+      FuncGByteArraySortWithData("g_byte_array_sort_with_data"),
+
+      FuncTvbNewRealData("tvb_new_real_data") {
   AllocDeallocMismatchBugType.reset(
       new BugType(this, "Alloc-dealloc mismatch", categories::MemoryError));
   DoubleFreeBugType.reset(
@@ -438,6 +441,19 @@ void AllocFreeChecker::checkPostCall(const CallEvent &Call,
     ProgramStateRef State = C.getState();
     SVal Arg0 = Call.getArgSVal(0);
     State = State->BindExpr(Call.getOriginExpr(), C.getLocationContext(), Arg0);
+    C.addTransition(State);
+  }
+
+  // HACK: avoid false positive with tvb functions (tvb_new_real_data) that have
+  // a non-const argument, but consume it anyway.
+  // TODO improve this by checking for a matching tvb_set_free_cb.
+  if (Call.isCalled(FuncTvbNewRealData) && Call.getNumArgs() > 0) {
+    ProgramStateRef State = C.getState();
+    SymbolRef Address = Call.getArgSVal(0).getAsSymbol();
+    if (!Address)
+      return;
+
+    State = State->remove<AddressMap>(Address);
     C.addTransition(State);
   }
 }

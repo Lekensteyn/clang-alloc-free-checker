@@ -34,6 +34,7 @@ set(tests
   glib-array
   glib-byte-array
   glib-ptr-array
+  wireshark-tvb
   wmem-alloc
   wmem-scope
 )

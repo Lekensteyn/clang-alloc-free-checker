@@ -26,11 +26,6 @@ From docs/analyzer/IPA.txt we learn that:
 - LocationContext roughly represents the state of a new function call (including
   stack frame).
 
-false positive, not a memleak:
-
-    T = tvb_new_real_data(P, ...);
-    tvb_set_free_cb(T, g_free)
-
 TODO handle allocations from these types (U = Unused in Wireshark)
 https://developer.gnome.org/glib/stable/glib-Doubly-Linked-Lists.html
 https://developer.gnome.org/glib/stable/glib-Singly-Linked-Lists.html
